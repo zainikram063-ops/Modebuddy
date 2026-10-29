@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import type { Message } from "ai";
-import { Columns2, Globe, Share2, Shuffle, Timer, X } from "lucide-react";
+import { Columns2, Globe, Layers, Share2, Shuffle, Timer, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { modeCopy, onAccent, type Mode } from "@/lib/modes";
 import { modelLabel, type ModelConfig } from "@/lib/providers-meta";
@@ -16,6 +16,8 @@ import { useChatMotion, playModeSwitch } from "./Motion";
 import Thinking from "./Thinking";
 import Compare from "./Compare";
 import StudyBar, { type StudyToolAction } from "./StudyBar";
+import StudyHome from "./study/StudyHome";
+import Review from "./study/Review";
 import { MicButton, speak } from "./Voice";
 import { Icon } from "./Icons";
 import type { AppUser } from "./Workspace";
@@ -74,6 +76,9 @@ export default function ChatView(p: Props) {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareId, setShareId] = useState<string | null | undefined>(undefined);
   const [sharing, setSharing] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [dueCount, setDueCount] = useState(0);
+  const [statsKey, setStatsKey] = useState(0);
 
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -85,6 +90,15 @@ export default function ChatView(p: Props) {
   useChatMotion(scrollRef, p.id);
   const codeMode = /code/i.test(`${p.mode.id} ${p.mode.name}`);
   const examDay = isStudy && study.examDay;
+
+  /* study: cards due count for the top-bar pill */
+  useEffect(() => {
+    if (!isStudy) return;
+    let alive = true;
+    supabase.from("flashcards").select("id", { count: "exact", head: true }).lte("due_at", new Date().toISOString())
+      .then(({ count }) => { if (alive) setDueCount(count ?? 0); });
+    return () => { alive = false; };
+  }, [isStudy, statsKey, supabase]);
 
   /* voice: if the user spoke, read the reply aloud when it finishes */
   const voiceTurn = useRef(false);
@@ -141,15 +155,16 @@ export default function ChatView(p: Props) {
     setLine(copy.lines[Math.floor(Math.random() * copy.lines.length)] ?? "");
   }, [p.mode.id, examDay]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* turn finished → refresh sidebar, generate title on first exchange */
+  /* turn finished → refresh sidebar + study stats, generate title on first exchange */
   useEffect(() => {
     const was = prevStatus.current;
     prevStatus.current = status;
     if ((was === "submitted" || was === "streaming") && (status === "ready" || status === "error")) {
       const users = messages.filter((m) => m.role === "user");
       p.onFinished(status === "ready" && users.length === 1, users[0]?.content ?? "");
+      if (isStudy) setStatsKey((k) => k + 1);
     }
-  }, [status, messages, p]);
+  }, [status, messages, p, isStudy]);
 
   /* auto-scroll only when the user is near the bottom */
   const onScroll = () => {
@@ -361,12 +376,6 @@ export default function ChatView(p: Props) {
     return [...nums, ...offers, ...fallback, ...pdf];
   }, [busy, last, isStudy, whyDepth]);
 
-  const onChip = (c: string) => {
-    if (c === PDF_CHIP || /pdf/i.test(c)) { exportPdf(); return; }
-    if (isStudy && isStudyChip(c)) { submit(studyChipPrompt(c, whyDepth + 1)); return; }
-    submit(c);
-  };
-
   const exportPdf = useCallback(() => {
     const nodes = scrollRef.current?.querySelectorAll<HTMLElement>(".msg.assistant .answer");
     const el = nodes?.[nodes.length - 1];
@@ -386,6 +395,12 @@ export default function ChatView(p: Props) {
     w.focus();
     setTimeout(() => w.print(), 300);
   }, [p]);
+
+  const onChip = (c: string) => {
+    if (c === PDF_CHIP || /pdf/i.test(c)) { exportPdf(); return; }
+    if (isStudy && isStudyChip(c)) { submit(studyChipPrompt(c, whyDepth + 1)); return; }
+    submit(c);
+  };
 
   const errText = useMemo(() => {
     if (!error) return null;
@@ -409,6 +424,11 @@ export default function ChatView(p: Props) {
         <span className="title">{p.title}</span>
         <span className="mode-badge"><span>{p.mode.icon}</span>{p.mode.name}</span>
         {examDay && <span className="exam-badge"><Timer size={12} strokeWidth={2} /> Exam day</span>}
+        {isStudy && dueCount > 0 && (
+          <button className="due-pill" onClick={() => setReviewOpen(true)} title="Review due flashcards">
+            <Layers size={13} strokeWidth={2} /> {dueCount} due
+          </button>
+        )}
 
         <button className="icon-btn top-act" onClick={() => setCompareOpen(true)} disabled={busy} title="Compare models" aria-label="Compare models">
           <Columns2 size={16} strokeWidth={1.75} />
@@ -462,6 +482,13 @@ export default function ChatView(p: Props) {
                 <Icon name="key" /> Add your API key to start. Gemini is free to try →
               </button>
             )}
+            {isStudy && (
+              <StudyHome
+                refreshKey={statsKey}
+                onReview={() => setReviewOpen(true)}
+                onPractice={(t) => submit(`Quiz me on ${t}, focusing on what I keep getting wrong.`)}
+              />
+            )}
             <div className="sugs">
               {copy.suggestions.map(([t, d]) => (
                 <button key={t} className="sug" onClick={() => submit(t)}><b>{t}</b><span>{d}</span></button>
@@ -471,7 +498,7 @@ export default function ChatView(p: Props) {
         ) : (
           <div className="thread">
             {messages.map((m, i) => (
-              <MessageItem key={m.id} m={m} isLast={i === messages.length - 1} busy={busy} onEdit={(t) => editMessage(i, t)} onRegenerate={regenerate} />
+              <MessageItem key={m.id} m={m} isLast={i === messages.length - 1} busy={busy} onEdit={(t) => editMessage(i, t)} onRegenerate={regenerate} onSend={(t) => submit(t)} />
             ))}
             {status === "submitted" && (
               <div className="msg assistant"><div className="avatar" aria-hidden>⌥</div><Thinking code={codeMode} /></div>
@@ -608,6 +635,7 @@ export default function ChatView(p: Props) {
           onClose={() => setCompareOpen(false)} onKeep={keepCompare} toast={p.toast}
         />
       )}
+      {reviewOpen && <Review onClose={() => { setReviewOpen(false); setStatsKey((k) => k + 1); }} />}
     </div>
   );
 }
