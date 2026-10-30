@@ -1112,3 +1112,77 @@ kbd{font-family:var(--mono);font-size:.66rem;border:1px solid currentColor;borde
 .review-end .quiz-actions { justify-content: center; }
 .review-end .quiz-actions button { color: inherit; background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.14); }
 .review-end .quiz-actions .primary { background: var(--mb-a); color: #fff; border-color: transparent; }
+/* ===== Course material panel ===== */
+.mat-overlay {
+  position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 20px;
+  background: rgba(10,8,6,.55); backdrop-filter: blur(6px); animation: mb-fade .2s ease;
+}
+.mat-panel {
+  --mb-a: #e07a2f;
+  width: min(560px, 100%); max-height: min(720px, 90vh); display: flex; flex-direction: column;
+  padding: 18px; border-radius: 20px; background: #1a1714; color: #f1ece6;
+  border: 1px solid rgba(255,255,255,.08); box-shadow: 0 30px 80px rgba(0,0,0,.45);
+  animation: mb-pop .35s cubic-bezier(.34,1.56,.64,1);
+}
+.mat-head { display: flex; align-items: center; gap: 10px; font-size: 16px; }
+.mat-head svg { color: var(--mb-a); }
+.mat-x {
+  margin-left: auto; width: 30px; height: 30px; border-radius: 50%; border: 0; display: grid; place-items: center;
+  cursor: pointer; color: inherit; background: rgba(255,255,255,.06);
+}
+.mat-x:hover { background: rgba(255,255,255,.12); }
+.mat-sub { margin: 6px 0 14px; font-size: 13px; line-height: 1.5; opacity: .65; }
+.mat-drop {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; padding: 22px 16px;
+  border-radius: 14px; cursor: pointer; font: inherit; color: inherit; text-align: center;
+  background: rgba(255,255,255,.03); border: 1.5px dashed rgba(255,255,255,.2); transition: border-color .2s, background .2s;
+}
+.mat-drop:hover, .mat-drop.on { border-color: var(--mb-a); background: color-mix(in srgb, var(--mb-a) 10%, transparent); }
+.mat-drop svg { color: var(--mb-a); margin-bottom: 4px; }
+.mat-drop b { font-size: 14px; }
+.mat-drop span { font-size: 12px; opacity: .55; }
+.mat-list { flex: 1; min-height: 0; overflow-y: auto; margin-top: 12px; scrollbar-width: thin; }
+.mat-empty { text-align: center; font-size: 13px; opacity: .55; padding: 16px 8px; margin: 0; }
+.mat-doc {
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; font-size: 13.5px;
+  animation: mb-slide-in .3s ease; transition: background .15s;
+}
+.mat-doc:hover { background: rgba(255,255,255,.05); }
+.mat-doc > svg { flex: none; color: var(--mb-a); }
+.mat-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mat-doc small { flex: none; font-size: 11.5px; opacity: .5; }
+.mat-doc button {
+  flex: none; width: 28px; height: 28px; border-radius: 8px; border: 0; display: grid; place-items: center; cursor: pointer;
+  color: inherit; background: transparent; opacity: .5; transition: opacity .15s, background .15s, color .15s;
+}
+.mat-doc button:hover { opacity: 1; color: #ff6b6b; background: rgba(255,107,107,.12); }
+.mat-doc.busy { opacity: .7; }
+.mat-doc .spin { width: 14px; height: 14px; }
+.mat-usage { margin-top: 12px; }
+.mat-bar { height: 5px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.08); }
+.mat-bar i { display: block; height: 100%; background: var(--mb-a); transition: width .4s ease; }
+.mat-bar.over i { background: #f0b429; }
+.mat-usage small { display: block; margin-top: 6px; font-size: 11.5px; opacity: .55; }
+
+/* ===== Lecture status bar ===== */
+.lecture-note {
+  display: flex; align-items: center; gap: 10px; width: calc(100% - 32px); max-width: 788px; margin: 0 auto 8px;
+  padding: 9px 12px; border-radius: 14px; font-size: 13px;
+  background: color-mix(in srgb, var(--mb-a) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mb-a) 35%, transparent);
+  animation: mb-pop .35s cubic-bezier(.34,1.56,.64,1);
+}
+.lecture-note > span:nth-child(2) { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.lecture-note em { font-style: normal; font-size: 11.5px; opacity: .6; }
+.lecture-note button {
+  flex: none; padding: 5px 12px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700;
+  color: inherit; background: transparent; border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+}
+.lecture-note button:hover { border-color: #e5484d; color: #e5484d; }
+.lecture-wave { display: inline-flex; align-items: center; gap: 3px; height: 18px; flex: none; }
+.lecture-wave i { width: 3px; border-radius: 3px; background: var(--mb-a); animation: mb-wave 1s ease-in-out infinite; }
+.lecture-wave i:nth-child(1) { height: 8px; }
+.lecture-wave i:nth-child(2) { height: 16px; animation-delay: .15s; }
+.lecture-wave i:nth-child(3) { height: 11px; animation-delay: .3s; }
+.lecture-wave i:nth-child(4) { height: 14px; animation-delay: .45s; }
+@keyframes mb-wave { 50% { transform: scaleY(.35); } }

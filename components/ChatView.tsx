@@ -19,6 +19,7 @@ import StudyBar, { type StudyToolAction } from "./StudyBar";
 import StudyHome from "./study/StudyHome";
 import Review from "./study/Review";
 import FocusTimer from "./study/FocusTimer";
+import Material from "./study/Material";
 import { MicButton, speak } from "./Voice";
 import { Icon } from "./Icons";
 import type { AppUser } from "./Workspace";
@@ -33,9 +34,13 @@ type Props = {
 };
 type Pending = { id: string; file: File; kind: "upload" | "text"; preview?: string; text?: string };
 type Switched = { from: string; to: string; name: string; reason?: string };
+type Lecture = { name: string; stage: "uploading" | "transcribing"; started: number };
 
 const TEXT_EXT = /\.(txt|md|markdown|csv|tsv|json|jsonl|js|jsx|ts|tsx|py|rb|go|rs|java|kt|swift|c|cc|cpp|h|cs|php|css|scss|html|xml|ya?ml|toml|ini|sql|sh|log)$/i;
+const AUDIO_EXT = /\.(mp3|m4a|wav|aac|ogg|oga|flac|webm|mp4|mov|mkv)$/i;
 const PDF_CHIP = "Save as PDF";
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 export default function ChatView(p: Props) {
   const supabase = useMemo(() => createClient(), []);
@@ -80,12 +85,19 @@ export default function ChatView(p: Props) {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [dueCount, setDueCount] = useState(0);
   const [statsKey, setStatsKey] = useState(0);
+  const [materialOpen, setMaterialOpen] = useState(false);
+  const [lecture, setLecture] = useState<Lecture | null>(null);
+  const [, setTick] = useState(0);
 
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const lectureRef = useRef<HTMLInputElement>(null);
+  const lectureCancel = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const prevStatus = useRef(status);
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
   const handledSwitch = useRef(new Set(p.initialMessages.map((m) => m.id)));
   const copy = modeCopy(p.mode);
   useChatMotion(scrollRef, p.id);
@@ -100,6 +112,13 @@ export default function ChatView(p: Props) {
       .then(({ count }) => { if (alive) setDueCount(count ?? 0); });
     return () => { alive = false; };
   }, [isStudy, statsKey, supabase]);
+
+  /* lecture: tick the elapsed timer */
+  useEffect(() => {
+    if (!lecture) return;
+    const t = setInterval(() => setTick((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, [lecture]);
 
   /* voice: if the user spoke, read the reply aloud when it finishes */
   const voiceTurn = useRef(false);
@@ -201,12 +220,14 @@ export default function ChatView(p: Props) {
       } else if (file.type.startsWith("text/") || TEXT_EXT.test(file.name)) {
         if (file.size > 300_000) { p.toast(`${file.name} is over 300 KB.`); continue; }
         out.push({ id, file, kind: "text", text: await file.text() });
+      } else if (/^(audio|video)\//.test(file.type) || AUDIO_EXT.test(file.name)) {
+        p.toast(isStudy ? "For lectures, use Tools → Lecture → notes." : "Audio files work in Study mode: Tools → Lecture → notes.");
       } else {
         p.toast(`${file.name}: unsupported file type.`);
       }
     }
     setFiles((f) => [...f, ...out].slice(0, 8));
-  }, [p]);
+  }, [p, isStudy]);
 
   const removeFile = (id: string) =>
     setFiles((f) => { const x = f.find((y) => y.id === id); if (x?.preview) URL.revokeObjectURL(x.preview); return f.filter((y) => y.id !== id); });
@@ -249,6 +270,9 @@ export default function ChatView(p: Props) {
     append({ role: "user", content }, { experimental_attachments: attachments.length ? attachments : undefined });
   }, [input, files, busy, uploading, p, supabase, append]);
 
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+
   /* ---------- study tools ---------- */
   const runTool = (t: StudyToolAction) => {
     if (!t.prefillOnly && messages.length && !busy) { submit(t.text); return; }
@@ -260,6 +284,53 @@ export default function ChatView(p: Props) {
       ta.setSelectionRange(ta.value.length, ta.value.length);
     });
     fitInput();
+  };
+
+  /* ---------- lecture → notes ---------- */
+  const transcribeLecture = async (file: File) => {
+    if (lecture) { p.toast("A lecture is already being transcribed."); return; }
+    if (!/^(audio|video)\//.test(file.type) && !AUDIO_EXT.test(file.name)) { p.toast("Pick an audio or video file."); return; }
+    if (file.size > 50_000_000) { p.toast("That file is over 50 MB. Export it as MP3 or M4A audio to shrink it."); return; }
+
+    lectureCancel.current = false;
+    setLecture({ name: file.name, stage: "uploading", started: Date.now() });
+    const path = `${p.user.id}/lectures/${crypto.randomUUID()}-${file.name.replace(/[^\w.-]/g, "_")}`;
+    const cleanup = () => { supabase.storage.from("attachments").remove([path]).then(() => {}); };
+
+    try {
+      const { error: upErr } = await supabase.storage.from("attachments").upload(path, file, { contentType: file.type || "audio/mpeg" });
+      if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
+      const url = supabase.storage.from("attachments").getPublicUrl(path).data.publicUrl;
+
+      const r = await fetch("/api/study/transcribe", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? "Couldn't start transcription.");
+      setLecture((l) => (l ? { ...l, stage: "transcribing" } : l));
+
+      const deadline = Date.now() + 40 * 60_000;
+      let text = "";
+      while (!lectureCancel.current) {
+        if (Date.now() > deadline) throw new Error("Transcription is taking too long. Try a shorter recording.");
+        await sleep(3000);
+        const s = await fetch(`/api/study/transcribe?id=${encodeURIComponent(j.id)}`).then((x) => x.json());
+        if (s.error) throw new Error(s.error);
+        if (s.status === "completed") { text = s.text ?? ""; break; }
+      }
+      cleanup();
+      if (lectureCancel.current) { p.toast("Lecture transcription cancelled."); return; }
+      if (!text.trim()) throw new Error("No speech found in that recording.");
+
+      for (let i = 0; i < 240 && busyRef.current; i++) await sleep(500);
+      const base = file.name.replace(/\.[^.]+$/, "").replace(/"/g, "");
+      submitRef.current(`Turn this lecture into study notes, then make flashcards from it.\n\n<file name="${base} · transcript.txt">\n${text}\n</file>`);
+    } catch (e) {
+      cleanup();
+      p.toast((e as Error).message);
+    } finally {
+      setLecture(null);
+    }
   };
 
   const whyDepth = useMemo(() => {
@@ -390,7 +461,7 @@ export default function ChatView(p: Props) {
       body{font:15px/1.65 -apple-system,system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 24px;color:#111}
       h1{font-size:26px;margin-bottom:24px}pre{background:#f5f5f5;padding:12px;border-radius:6px;white-space:pre-wrap}
       code{font-family:ui-monospace,Menlo,monospace;font-size:13px}table{border-collapse:collapse}
-      td,th{border:1px solid #ddd;padding:6px 10px}img{max-width:100%}
+      td,th{border:1px solid #ddd;padding:6px 10px}img,svg{max-width:100%}
     </style></head><body><h1>${title}</h1>${clone.innerHTML}</body></html>`);
     w.document.close();
     w.focus();
@@ -412,6 +483,7 @@ export default function ChatView(p: Props) {
   const hour = new Date().getHours();
   const hello = hour < 5 ? "Up late" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const noKey = !p.modelConfig.apiKey && p.modelConfig.provider !== "custom";
+  const lectureSecs = lecture ? Math.floor((Date.now() - lecture.started) / 1000) : 0;
 
   return (
     <div
@@ -430,7 +502,7 @@ export default function ChatView(p: Props) {
             <Layers size={13} strokeWidth={2} /> {dueCount} due
           </button>
         )}
-                {isStudy && <FocusTimer onComplete={() => setStatsKey((k) => k + 1)} toast={p.toast} />}
+        {isStudy && <FocusTimer onComplete={() => setStatsKey((k) => k + 1)} toast={p.toast} />}
 
         <button className="icon-btn top-act" onClick={() => setCompareOpen(true)} disabled={busy} title="Compare models" aria-label="Compare models">
           <Columns2 size={16} strokeWidth={1.75} />
@@ -534,7 +606,31 @@ export default function ChatView(p: Props) {
         </div>
       )}
 
-      {isStudy && <StudyBar value={study} onChange={updateStudy} onTool={runTool} />}
+      {lecture && (
+        <div className="lecture-note" role="status">
+          <span className="lecture-wave" aria-hidden><i /><i /><i /><i /></span>
+          <span>
+            <b>{lecture.stage === "uploading" ? "Uploading" : "Transcribing"}</b> {lecture.name} · {clock(lectureSecs)}
+            {lecture.stage === "transcribing" && <em>Usually about a third of the recording&apos;s length</em>}
+          </span>
+          <button onClick={() => { lectureCancel.current = true; }}>Cancel</button>
+        </div>
+      )}
+
+      {isStudy && (
+        <StudyBar
+          value={study}
+          onChange={updateStudy}
+          onTool={runTool}
+          onMaterial={() => setMaterialOpen(true)}
+          onLecture={() => lectureRef.current?.click()}
+        />
+      )}
+      <input
+        ref={lectureRef} type="file" hidden
+        accept="audio/*,video/*,.mp3,.m4a,.wav,.aac,.ogg,.flac,.webm,.mp4,.mov"
+        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) transcribeLecture(f); }}
+      />
 
       <form className="composer" onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <div className="composer-box">
@@ -638,6 +734,7 @@ export default function ChatView(p: Props) {
         />
       )}
       {reviewOpen && <Review onClose={() => { setReviewOpen(false); setStatsKey((k) => k + 1); }} />}
+      {materialOpen && <Material onClose={() => setMaterialOpen(false)} toast={p.toast} />}
     </div>
   );
 }

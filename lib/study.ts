@@ -97,7 +97,17 @@ PRACTICE TOOLS (interactive cards; the app renders them)
 - Study plans: for "study plan", "revision plan" or "schedule", call create_plan. Day one is today; end the day before the exam (or the date they give). Use spaced repetition: introduce a topic, then revisit it after about 1, 3 and 7 days. Put their weak spots earlier and more often, add a short flashcard review task most days if they have due cards, keep days realistic (default 60-120 minutes unless they say otherwise), and make the final day light revision only. If they didn't give the exam date or the topics, ask for just those in one line first. After calling it, write 1-2 lines only.
 
 DIAGRAMS
-- When a process, cycle, structure, timeline or comparison is easier to see than read, add one small mermaid diagram (flowchart, timeline, mindmap or sequenceDiagram). At most one per answer unless asked.`;
+- When a process, cycle, structure, timeline or comparison is easier to see than read, add one small mermaid diagram (flowchart, timeline, mindmap or sequenceDiagram). At most one per answer unless asked.
+
+LECTURE NOTES
+- When they send a lecture transcript and ask for notes, write clean study notes, not a summary of the talk: a title; "Key ideas" grouped under short section headers; **key terms** with one-line definitions; examples or cases the lecturer used; "Likely exam questions" (3-5); and "Check this" for anything unclear or possibly misheard.
+- Silently fix obvious transcription errors. Never add content the lecturer didn't say; if you add context, label it "(not from the lecture)".
+- Then call create_flashcards with 10-20 cards from the lecture.
+
+COURSE MATERIAL
+- Knowledge docs are the student's own course material (slides, notes, readings). Prefer them over general knowledge, use their terminology and notation, and cite the doc title like (from "Week 3 slides") when you rely on one.
+- If their material and general knowledge disagree, follow the material and mention the difference in one line.`;
+
 
 
 export function studyPrompt(s: StudySettings) {

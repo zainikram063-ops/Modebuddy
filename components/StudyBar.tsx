@@ -2,13 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Brain, CalendarCheck, ChevronDown, ClipboardList, FileText, GraduationCap, Layers, Lightbulb, ListChecks, ListTree,
-  Puzzle, ScrollText, SearchCheck, Table2, Timer,
+  BookOpen, Brain, CalendarCheck, ChevronDown, ClipboardList, FileText, GraduationCap, Layers, Lightbulb, ListChecks, ListTree,
+  Mic, Puzzle, ScrollText, SearchCheck, Table2, Timer,
 } from "lucide-react";
 import { STUDY_LEVELS, type StudySettings } from "@/lib/study";
 
 export type StudyToolAction = { text: string; prefill: string; prefillOnly?: boolean };
-type Props = { value: StudySettings; onChange: (s: StudySettings) => void; onTool: (t: StudyToolAction) => void };
+type Props = {
+  value: StudySettings;
+  onChange: (s: StudySettings) => void;
+  onTool: (t: StudyToolAction) => void;
+  onMaterial: () => void;
+  onLecture: () => void;
+};
 
 const ic = { size: 15, strokeWidth: 1.75 };
 
@@ -41,7 +47,7 @@ const ANALOGIES = [
   { label: "Movies", use: "movies" },
 ];
 
-export default function StudyBar({ value, onChange, onTool }: Props) {
+export default function StudyBar({ value, onChange, onTool, onMaterial, onLecture }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const set = (patch: Partial<StudySettings>) => onChange({ ...value, ...patch });
@@ -92,6 +98,15 @@ export default function StudyBar({ value, onChange, onTool }: Props) {
                 {t.icon}<span><b>{t.label}</b><em>{t.sub}</em></span>
               </button>
             ))}
+
+            <small>Your material</small>
+            <button type="button" role="menuitem" onClick={() => { setOpen(false); onMaterial(); }}>
+              <BookOpen {...ic} /><span><b>Course material</b><em>Slides &amp; notes Study mode cites</em></span>
+            </button>
+            <button type="button" role="menuitem" onClick={() => { setOpen(false); onLecture(); }}>
+              <Mic {...ic} /><span><b>Lecture → notes</b><em>Recording to notes + flashcards</em></span>
+            </button>
+
             <small>Summarize</small>
             {SUMMARIES.map((s) => (
               <button key={s.label} type="button" role="menuitem"
@@ -99,6 +114,7 @@ export default function StudyBar({ value, onChange, onTool }: Props) {
                 {s.icon}<span><b>{s.label}</b></span>
               </button>
             ))}
+
             <small>Analogy from</small>
             <div className="analogy-row">
               {ANALOGIES.map((a) => (
