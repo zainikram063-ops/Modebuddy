@@ -18,6 +18,7 @@ import Compare from "./Compare";
 import StudyBar, { type StudyToolAction } from "./StudyBar";
 import StudyHome from "./study/StudyHome";
 import Review from "./study/Review";
+import FocusTimer from "./study/FocusTimer";
 import { MicButton, speak } from "./Voice";
 import { Icon } from "./Icons";
 import type { AppUser } from "./Workspace";
@@ -429,6 +430,7 @@ export default function ChatView(p: Props) {
             <Layers size={13} strokeWidth={2} /> {dueCount} due
           </button>
         )}
+                {isStudy && <FocusTimer onComplete={() => setStatsKey((k) => k + 1)} toast={p.toast} />}
 
         <button className="icon-btn top-act" onClick={() => setCompareOpen(true)} disabled={busy} title="Compare models" aria-label="Compare models">
           <Columns2 size={16} strokeWidth={1.75} />

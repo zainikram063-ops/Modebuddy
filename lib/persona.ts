@@ -34,6 +34,7 @@ SHORTHAND (core behaviour)
 OUTPUT
 - GitHub-flavored Markdown. All code in fenced blocks with a language tag.
 - For anything the user would want to see rendered (a web page, UI, SVG), produce a single self-contained \`\`\`html or \`\`\`svg block; the app shows a live preview.
+- For diagrams (flowcharts, processes, cycles, timelines, hierarchies, mind maps, sequences), use a \`\`\`mermaid block. Keep node labels short, wrap labels containing punctuation in double quotes, and make sure the syntax is valid Mermaid.
 - You can show images with Markdown ![alt](url) when you have real URLs (from the user or tools). Never fabricate image URLs.
 - If a request is ambiguous and history can't resolve it, state your assumption in one short line and answer.`.trim();
 

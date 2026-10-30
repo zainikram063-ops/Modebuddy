@@ -22,13 +22,14 @@ export function parseStudy(v: unknown): StudySettings {
 }
 
 /* ---------- chips under answers ---------- */
-export const STUDY_CHIPS = ["Why?", "Simpler", "Analogy", "Check me"];
+export const STUDY_CHIPS = ["Why?", "Simpler", "Analogy", "Check me", "Quiz me"];
 export const isStudyChip = (c: string) => c.startsWith("Why?") || STUDY_CHIPS.includes(c);
 export function studyChipPrompt(chip: string, depth: number) {
   if (chip.startsWith("Why?")) return depth > 1 ? `Why? Go one layer deeper (layer ${depth}).` : "Why? Go one layer deeper.";
   if (chip === "Simpler") return "Simpler, please.";
   if (chip === "Analogy") return "Analogy, please.";
   if (chip === "Check me") return "Check me on that.";
+  if (chip === "Quiz me") return "Quiz me on this: 5 questions.";
   return chip;
 }
 
@@ -85,7 +86,19 @@ STUDY TOOLS (triggered by these phrases)
   - one-page summary: short headers and bullets, under ~350 words.
   - glossary: a table | Term | Meaning | Example |, alphabetical.
   - mind map: nested bullet outline, central topic first, 2-4 levels deep, max 6 words per node.
-  - exam cheat sheet: must-know facts, formulas, definitions, common traps, memory hooks. Dense and scannable.`;
+  - exam cheat sheet: must-know facts, formulas, definitions, common traps, memory hooks. Dense and scannable.
+
+PRACTICE TOOLS (interactive cards; the app renders them)
+- Quizzes: when they want to be quizzed or tested ("quiz me", "test me"), call create_quiz. Default 5 questions, 4 options each, mixed difficulty, exactly one correct answer, plausible distractors, based on the conversation or their material. After calling it, write ONE short line (e.g. "Your quiz is ready. No peeking.") and nothing else. Never repeat the questions or answers in text.
+- When they send quiz results ("I got 3/5…"), briefly explain each mistake and say what to review. Then offer a retry.
+- Flashcards: for "flashcards", call create_flashcards: 8-20 cards, one fact per card, short fronts (a question or term), concise backs. Then ONE short line only.
+- Mock exams: for "mock exam", "practice paper" or "test me properly", call create_exam. If they shared a past paper, match its style, difficulty and mark allocation. Otherwise make a balanced paper (mix of mcq and short written answers, roughly 1 minute per mark) without asking questions first. Then ONE short line only.
+- When they send "Mark my mock exam", mark each question against its mark scheme with fair partial credit: a table | Q | Marks | Feedback |, then the total as "**Total: X/Y (Z%)**", a one-line overall verdict, and the top 3 things to revise.
+- Study plans: for "study plan", "revision plan" or "schedule", call create_plan. Day one is today; end the day before the exam (or the date they give). Use spaced repetition: introduce a topic, then revisit it after about 1, 3 and 7 days. Put their weak spots earlier and more often, add a short flashcard review task most days if they have due cards, keep days realistic (default 60-120 minutes unless they say otherwise), and make the final day light revision only. If they didn't give the exam date or the topics, ask for just those in one line first. After calling it, write 1-2 lines only.
+
+DIAGRAMS
+- When a process, cycle, structure, timeline or comparison is easier to see than read, add one small mermaid diagram (flowchart, timeline, mindmap or sequenceDiagram). At most one per answer unless asked.`;
+
 
 export function studyPrompt(s: StudySettings) {
   const parts = [LEVEL_TEXT[s.level]];

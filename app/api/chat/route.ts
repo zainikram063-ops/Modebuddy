@@ -8,6 +8,7 @@ import { BUILTIN_MODES, type Mode } from "@/lib/modes";
 import { buildSystemPrompt } from "@/lib/persona";
 import { parseStudy } from "@/lib/study";
 import { makeStudyTools } from "@/lib/study-tools"; // ← NEW
+import { weakSpots, weakNote, type Attempt } from "@/lib/progress";
 import { loadConnectorTools } from "@/lib/mcp";
 import type { Connector } from "@/lib/types";
 
@@ -221,6 +222,18 @@ export async function POST(req: Request) {
     if (webSearch) system += `\n- The user turned web search ON: call web_search before answering this message.`;
   }
   if (Object.keys(modeTools).length) system += `\n\n${modeNote(mode.name, allModes)}`;
+      if (mode.id === "study") {
+    const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    const [{ data: atts }, { count: due }] = await Promise.all([
+      db.from("study_attempts").select("topic,correct,created_at").gte("created_at", since).limit(1000),
+      db.from("flashcards").select("id", { count: "exact", head: true }).lte("due_at", new Date().toISOString()),
+    ]);
+    const weak = weakSpots((atts ?? []) as Attempt[]);
+    if (weak.length) system += `\n\n${weakNote(weak)}`;
+    if (due) system += `\n\nFLASHCARDS: ${due} card${due > 1 ? "s are" : " is"} due for review. Include short daily review tasks in study plans. If they ask what to do right now, suggest clearing their due cards (the app has a Review button).`;
+  }
+
+
 
   const result = streamText({
     model,

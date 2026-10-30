@@ -3,13 +3,15 @@
 
 import { useMemo, useState, type CSSProperties } from "react";
 import type { Message } from "ai";
-import { ClipboardList, Globe, Layers, ListChecks, Shuffle } from "lucide-react";
+import { CalendarCheck, ClipboardList, Globe, Layers, ListChecks, Shuffle } from "lucide-react";
 import Markdown from "./Markdown";
 import { Icon } from "./Icons";
 import { SpeakButton } from "./Voice";
 import Quiz, { type QuizData } from "./study/Quiz";
 import Flashcards, { type DeckData } from "./study/Flashcards";
 import Exam, { type ExamData } from "./study/Exam";
+import Plan, { type PlanData } from "./study/Plan";
+import Mermaid from "./study/Mermaid";
 
 type Part = NonNullable<Message["parts"]>[number];
 type ToolInv = { state: "partial-call" | "call" | "result"; toolCallId: string; toolName: string; args?: unknown; result?: unknown };
@@ -20,6 +22,47 @@ const FILE_RE = /<file name="([^"]+)">[\s\S]*?<\/file>/g;
 const CITE_RE = /\[\[?(\d+)\]?\]\((https?:\/\/[^)\s]+)\)/g;
 export const FOLLOW_RE = /<followups>([\s\S]*?)(?:<\/followups>|$)/i;
 const stripFollow = (t: string) => t.replace(/\n*<followups>[\s\S]*$/i, "").replace(/<[a-z]{0,9}$/i, "").trimEnd();
+
+/* ---------- diagram detection ---------- */
+const KINDS = "graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|mindmap|gitGraph|quadrantChart";
+const KIND_RE = new RegExp(`^\\s*(?:%%[^\\n]*\\n\\s*)*(?:${KINDS})\\b`);
+const FENCE_RE = /```([^\n`]*)\n([\s\S]*?)(```|$)/g;
+const BARE_RE = /(^|\n)((?:graph|flowchart)[ \t]+(?:TD|TB|LR|RL|BT)\b[^\n]*(?:\n[ \t]*\S[^\n]*)+)/;
+
+type Seg = { kind: "text"; text: string } | { kind: "diagram"; code: string; done: boolean };
+
+function splitDiagrams(text: string): Seg[] {
+  const segs: Seg[] = [];
+  let last = 0;
+  for (const m of text.matchAll(FENCE_RE)) {
+    const lang = m[1].trim();
+    const body = m[2];
+    const isDiagram =
+      lang.toLowerCase() === "mermaid" ||
+      (KIND_RE.test(lang) && !!body.trim()) ||
+      (lang === "" && KIND_RE.test(body));
+    if (!isDiagram) continue;
+    const idx = m.index ?? 0;
+    if (idx > last) segs.push({ kind: "text", text: text.slice(last, idx) });
+    const code = KIND_RE.test(lang) && lang.toLowerCase() !== "mermaid" ? `${lang}\n${body}` : body;
+    segs.push({ kind: "diagram", code: code.trim(), done: !!m[3] });
+    last = idx + m[0].length;
+  }
+  if (last < text.length) segs.push({ kind: "text", text: text.slice(last) });
+
+  /* diagram code written without a code block */
+  const out: Seg[] = [];
+  for (const s of segs) {
+    if (s.kind !== "text" || s.text.includes("```")) { out.push(s); continue; }
+    const m = s.text.match(BARE_RE);
+    if (!m || m.index === undefined) { out.push(s); continue; }
+    const start = m.index + m[1].length;
+    out.push({ kind: "text", text: s.text.slice(0, start) });
+    out.push({ kind: "diagram", code: m[2].trim(), done: true });
+    out.push({ kind: "text", text: s.text.slice(start + m[2].length) });
+  }
+  return out;
+}
 
 const pretty = (v: unknown) => {
   try {
@@ -58,8 +101,9 @@ function GradeCard({ score, body, done }: { score: number; body: string; done: b
   );
 }
 
-function TextBlock({ text }: { text: string }) {
+function GradeText({ text }: { text: string }) {
   const clean = text.replace(/<grade[^>]*$/i, "");
+  if (!clean.trim()) return null;
   const m = clean.match(GRADE_RE);
   if (!m || m.index === undefined) return <Markdown text={clean} />;
   const before = clean.slice(0, m.index).trim();
@@ -69,6 +113,23 @@ function TextBlock({ text }: { text: string }) {
       {before && <Markdown text={before} />}
       <GradeCard score={Number(m[1])} body={m[2]} done={!!m[3]} />
       {after && <Markdown text={after} />}
+    </>
+  );
+}
+
+/** Text with diagrams and grade cards pulled out */
+function TextBlock({ text }: { text: string }) {
+  return (
+    <>
+      {splitDiagrams(text).map((s, i) =>
+        s.kind === "text" ? (
+          <GradeText key={i} text={s.text} />
+        ) : s.done ? (
+          <Mermaid key={i} code={s.code} />
+        ) : (
+          <div key={i} className="diagram-loading">Drawing diagram…</div>
+        )
+      )}
     </>
   );
 }
@@ -114,6 +175,7 @@ const PRACTICE_META: Record<string, { icon: JSX.Element; loading: string }> = {
   create_quiz: { icon: <ListChecks size={14} strokeWidth={1.75} />, loading: "Writing your quiz" },
   create_flashcards: { icon: <Layers size={14} strokeWidth={1.75} />, loading: "Making your flashcards" },
   create_exam: { icon: <ClipboardList size={14} strokeWidth={1.75} />, loading: "Setting your mock exam" },
+  create_plan: { icon: <CalendarCheck size={14} strokeWidth={1.75} />, loading: "Planning your days" },
 };
 
 function PracticeCard({ inv, onSend }: { inv: ToolInv; onSend?: (t: string) => void }) {
@@ -123,6 +185,7 @@ function PracticeCard({ inv, onSend }: { inv: ToolInv; onSend?: (t: string) => v
   if (!r?.ok) return <div className="web-card err">{meta.icon} Couldn&apos;t create it{r?.error ? ` · ${r.error}` : ""}</div>;
   if (inv.toolName === "create_quiz") return <Quiz id={inv.toolCallId} data={r as QuizData} onSend={onSend} />;
   if (inv.toolName === "create_flashcards") return <Flashcards data={r as DeckData} />;
+  if (inv.toolName === "create_plan") return <Plan data={r as PlanData} />;
   return <Exam id={inv.toolCallId} data={r as ExamData} onSend={onSend} />;
 }
 

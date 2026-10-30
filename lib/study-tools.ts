@@ -2,6 +2,8 @@ import { tool } from "ai";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export function makeStudyTools(db: SupabaseClient, userId: string, save: boolean) {
   return {
     create_quiz: tool({
@@ -59,6 +61,36 @@ export function makeStudyTools(db: SupabaseClient, userId: string, save: boolean
         })).min(1).max(25),
       }),
       execute: async (x) => ({ ok: true, ...x }),
+    }),
+
+    create_plan: tool({
+      description: "Create a day-by-day study plan the user can tick off. Use when they ask for a study plan, revision plan or schedule.",
+      parameters: z.object({
+        title: z.string().max(100).describe("e.g. 'Biology final · revision plan'"),
+        examDate: z.string().describe("Exam date as YYYY-MM-DD, or empty string if none"),
+        days: z.array(z.object({
+          date: z.string().describe("YYYY-MM-DD"),
+          focus: z.string().max(80).describe("The theme of the day"),
+          tasks: z.array(z.object({
+            text: z.string().max(160).describe("A concrete task, e.g. 'Quiz yourself on cell organelles'"),
+            minutes: z.number().int().min(5).max(240),
+          })).min(1).max(6),
+        })).min(1).max(60),
+      }),
+      execute: async ({ title, examDate, days }) => {
+        const clean = days
+          .filter((d) => DATE_RE.test(d.date))
+          .sort((a, b) => a.date.localeCompare(b.date))
+          .map((d, i) => ({ ...d, tasks: d.tasks.map((t, j) => ({ ...t, id: `${i}-${j}` })) }));
+        const exam = DATE_RE.test(examDate) ? examDate : "";
+        if (!clean.length) return { ok: false, error: "The plan had no valid dates." };
+        if (!save) return { ok: true, planId: null, title, examDate: exam, days: clean };
+        const { data, error } = await db.from("study_plans")
+          .insert({ user_id: userId, title, exam_date: exam || null, days: clean })
+          .select("id").single();
+        if (error || !data) return { ok: false, error: error?.message ?? "Couldn't save the plan." };
+        return { ok: true, planId: data.id, title, examDate: exam, days: clean };
+      },
     }),
   };
 }

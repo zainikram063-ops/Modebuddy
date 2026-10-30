@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Brain, ChevronDown, ClipboardList, FileText, GraduationCap, Layers, Lightbulb, ListChecks, ListTree,
+  Brain, CalendarCheck, ChevronDown, ClipboardList, FileText, GraduationCap, Layers, Lightbulb, ListChecks, ListTree,
   Puzzle, ScrollText, SearchCheck, Table2, Timer,
 } from "lucide-react";
 import { STUDY_LEVELS, type StudySettings } from "@/lib/study";
@@ -19,6 +19,8 @@ const PRACTICE: { icon: JSX.Element; label: string; sub: string; action: StudyTo
     action: { text: "Make flashcards from this chat.", prefill: "Make flashcards on: " } },
   { icon: <ClipboardList {...ic} />, label: "Mock exam", sub: "Timed, then marked",
     action: { text: "Make a 20-minute mock exam on what we covered.", prefill: "Make a 20-minute mock exam on: " } },
+  { icon: <CalendarCheck {...ic} />, label: "Study plan", sub: "Day by day, tick it off",
+    action: { text: "Make me a study plan. Exam date and topics: ", prefill: "Make me a study plan. Exam date and topics: ", prefillOnly: true } },
   { icon: <SearchCheck {...ic} />, label: "Check my work", sub: "Finds the first mistake, then hints",
     action: { text: "Check my work:\n", prefill: "Check my work:\n", prefillOnly: true } },
   { icon: <GraduationCap {...ic} />, label: "Teach it back", sub: "You explain it, I grade you /10",
