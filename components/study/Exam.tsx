@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ClipboardList, Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { InlineMd } from "../Markdown";
 
 type EQ = { q: string; type: "mcq" | "short"; options?: string[]; correct?: number; answer: string; marks: number };
 export type ExamData = { ok?: boolean; error?: string; title: string; minutes: number; questions: EQ[] };
@@ -119,12 +120,12 @@ export default function Exam({ id, data, onSend }: { id: string; data: ExamData;
             <ol className="exam-qs">
               {qs.map((q, k) => (
                 <li key={k} className={saved.answers[k]?.trim() ? "answered" : ""}>
-                  <div className="exam-q"><span>{q.q}</span><em>[{q.marks} mark{q.marks > 1 ? "s" : ""}]</em></div>
+                  <div className="exam-q"><span><InlineMd text={q.q} /></span><em>[{q.marks} mark{q.marks > 1 ? "s" : ""}]</em></div>
                   {isMcq(q) ? (
                     <div className="quiz-opts">
                       {q.options!.map((o, j) => (
                         <button key={j} type="button" className={`quiz-opt ${saved.answers[k] === String(j) ? "picked" : ""}`} onClick={() => setAnswer(k, String(j))}>
-                          <span className="quiz-letter">{"ABCDE"[j]}</span><span>{o}</span>
+                          <span className="quiz-letter">{"ABCDE"[j]}</span><span><InlineMd text={o} /></span>
                         </button>
                       ))}
                     </div>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { Layers, RotateCcw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { InlineMd } from "../Markdown";
 
 type Card = { id: string; front: string; back: string };
 export type DeckData = { ok?: boolean; error?: string; title: string; deckId: string | null; cards: Card[] };
@@ -68,8 +69,8 @@ export default function Flashcards({ data }: { data: DeckData }) {
           <button type="button" className={`flash ${flipped ? "flipped" : ""}`} onClick={() => setFlipped((f) => !f)}
                   aria-label={flipped ? "Show front" : "Show answer"}>
             <span className="flash-inner">
-              <span className="flash-face front"><small>Front</small>{card.front}<em>Tap to flip · Space</em></span>
-              <span className="flash-face back"><small>Back</small>{card.back}</span>
+              <span className="flash-face front"><small>Front</small><InlineMd text={card.front} /><em>Tap to flip · Space</em></span>
+              <span className="flash-face back"><small>Back</small><InlineMd text={card.back} /></span>
             </span>
           </button>
           <div className={`deck-actions ${flipped ? "show" : ""}`}>
