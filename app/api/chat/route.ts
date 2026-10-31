@@ -10,7 +10,8 @@ import { parseStudy } from "@/lib/study";
 import { makeStudyTools } from "@/lib/study-tools"; // ← NEW
 import { weakSpots, weakNote, type Attempt } from "@/lib/progress";
 import { loadConnectorTools } from "@/lib/mcp";
-import type { Connector } from "@/lib/types";
+import type { Connector } from "@/lib/types"
+import { CODE_NOTE } from "@/lib/code";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -234,6 +235,7 @@ export async function POST(req: Request) {
   }
 
 
+if (/code/i.test(`${mode.id} ${mode.name}`)) system += `\n\n${CODE_NOTE}`;
 
   const result = streamText({
     model,

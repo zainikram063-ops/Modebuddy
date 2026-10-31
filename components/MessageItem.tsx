@@ -1,9 +1,9 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { memo, useMemo, useState, type CSSProperties } from "react";
 import type { Message } from "ai";
-import { CalendarCheck, ClipboardList, Globe, Layers, ListChecks, Shuffle } from "lucide-react";
+import { CalendarCheck, ClipboardList, Download, Globe, Layers, ListChecks, Shuffle } from "lucide-react";
 import Markdown from "./Markdown";
 import { Icon } from "./Icons";
 import { SpeakButton } from "./Voice";
@@ -12,6 +12,7 @@ import Flashcards, { type DeckData } from "./study/Flashcards";
 import Exam, { type ExamData } from "./study/Exam";
 import Plan, { type PlanData } from "./study/Plan";
 import Mermaid from "./study/Mermaid";
+import { downloadZip, filesFromMarkdown } from "@/lib/files";
 
 type Part = NonNullable<Message["parts"]>[number];
 type ToolInv = { state: "partial-call" | "call" | "result"; toolCallId: string; toolName: string; args?: unknown; result?: unknown };
@@ -50,7 +51,6 @@ function splitDiagrams(text: string): Seg[] {
   }
   if (last < text.length) segs.push({ kind: "text", text: text.slice(last) });
 
-  /* diagram code written without a code block */
   const out: Seg[] = [];
   for (const s of segs) {
     if (s.kind !== "text" || s.text.includes("```")) { out.push(s); continue; }
@@ -117,7 +117,6 @@ function GradeText({ text }: { text: string }) {
   );
 }
 
-/** Text with diagrams and grade cards pulled out */
 function TextBlock({ text }: { text: string }) {
   return (
     <>
@@ -233,7 +232,7 @@ type Props = {
   onEdit: (text: string) => void; onRegenerate: () => void; onSend?: (text: string) => void;
 };
 
-export default function MessageItem({ m, isLast, busy, onEdit, onRegenerate, onSend }: Props) {
+function MessageItem({ m, isLast, busy, onEdit, onRegenerate, onSend }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [copied, setCopied] = useState(false);
@@ -244,19 +243,20 @@ export default function MessageItem({ m, isLast, busy, onEdit, onRegenerate, onS
     for (const x of textAll.matchAll(CITE_RE)) if (!map.has(x[2])) map.set(x[2], x[1]);
     return map;
   }, [textAll]);
+  const files = useMemo(() => (m.role === "assistant" ? filesFromMarkdown(textAll) : []), [m.role, textAll]);
 
   const copy = async () => { await navigator.clipboard.writeText(textAll); setCopied(true); setTimeout(() => setCopied(false), 1200); };
 
   /* ---------- user ---------- */
   if (m.role === "user") {
     const atts = m.experimental_attachments ?? [];
-    const files = [...m.content.matchAll(FILE_RE)].map((x) => x[1]);
+    const fileNames = [...m.content.matchAll(FILE_RE)].map((x) => x[1]);
     const fileBlocks = m.content.match(FILE_RE) ?? [];
     const visible = m.content.replace(FILE_RE, "").trim();
 
     return (
       <article className="msg user">
-        {(atts.length > 0 || files.length > 0) && (
+        {(atts.length > 0 || fileNames.length > 0) && (
           <div className="att-row">
             {atts.map((a, i) =>
               a.contentType?.startsWith("image/") ? (
@@ -265,7 +265,7 @@ export default function MessageItem({ m, isLast, busy, onEdit, onRegenerate, onS
                 <a key={i} className="att-file" href={a.url} target="_blank" rel="noreferrer">{a.name ?? "file"}</a>
               )
             )}
-            {files.map((f) => <span key={f} className="att-file">{f}</span>)}
+            {fileNames.map((f) => <span key={f} className="att-file">{f}</span>)}
           </div>
         )}
         {editing ? (
@@ -310,6 +310,11 @@ export default function MessageItem({ m, isLast, busy, onEdit, onRegenerate, onS
           <div className="msg-actions">
             <button onClick={copy} title="Copy">{copied ? <Icon name="check" size={14} /> : <Icon name="copy" size={14} />}</button>
             <SpeakButton text={textAll} />
+            {files.length >= 2 && (
+              <button onClick={() => downloadZip(files)} title={`Download ${files.length} files as .zip`}>
+                <Download size={14} strokeWidth={1.75} />
+              </button>
+            )}
             {isLast && <button onClick={onRegenerate} title="Regenerate"><Icon name="refresh" size={14} /></button>}
           </div>
         )}
@@ -317,3 +322,5 @@ export default function MessageItem({ m, isLast, busy, onEdit, onRegenerate, onS
     </article>
   );
 }
+
+export default memo(MessageItem, (a, b) => a.m === b.m && a.isLast === b.isLast && a.busy === b.busy);

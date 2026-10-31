@@ -359,7 +359,10 @@ export default function ChatView(p: Props) {
     if (last?.role === "assistant") await supabase.from("messages").delete().eq("id", last.id);
     reload();
   }, [busy, messages, supabase, reload]);
-
+    const editRef = useRef(editMessage);
+  editRef.current = editMessage;
+  const regenRef = useRef(regenerate);
+  regenRef.current = regenerate;
   /* ---------- compare: keep the winning answer ---------- */
   const keepCompare = useCallback(async (fresh: Message[]) => {
     setCompareOpen(false);
@@ -572,7 +575,9 @@ export default function ChatView(p: Props) {
         ) : (
           <div className="thread">
             {messages.map((m, i) => (
-              <MessageItem key={m.id} m={m} isLast={i === messages.length - 1} busy={busy} onEdit={(t) => editMessage(i, t)} onRegenerate={regenerate} onSend={(t) => submit(t)} />
+                                          <MessageItem key={m.id} m={m} isLast={i === messages.length - 1} busy={busy} onEdit={(t) => editRef.current(i, t)} onRegenerate={() => regenRef.current()} onSend={(t) => submitRef.current(t)} />
+
+
             ))}
             {status === "submitted" && (
               <div className="msg assistant"><div className="avatar" aria-hidden>⌥</div><Thinking code={codeMode} /></div>

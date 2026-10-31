@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Check, ListChecks, RotateCcw, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { InlineMd } from "../Markdown";
 
 type Q = { q: string; options: string[]; answer: number; explain: string };
 export type QuizData = { ok?: boolean; error?: string; title: string; questions: Q[] };
