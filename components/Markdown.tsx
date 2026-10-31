@@ -8,9 +8,10 @@ import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import "katex/dist/katex.min.css";
 import "katex/contrib/mhchem";
-import { Check, ChevronDown, Copy, Download, Eye, FileCode2, Play, Square, X } from "lucide-react";
+import { Check, ChevronDown, Copy, Download, Eye, FileCode2, FlaskConical, Play, Square, X } from "lucide-react";
 import { useArtifact } from "./Artifacts";
 import { downloadZip, pathFrom } from "@/lib/files";
+import { sendToChat, useCanSend } from "@/lib/chat-bus";
 import type { RunHandle, RunOut } from "@/lib/runner";
 
 /* ---------- hast helpers ---------- */
@@ -100,17 +101,39 @@ const NO_NUMBERS = new Set(["", "text", "plaintext", "txt", "bash", "sh", "zsh",
 const COLLAPSE_AT = 30;
 const PEEK = 16;
 
+/* ---------- tests ---------- */
+const TEST_RE: Record<"js" | "ts" | "py", RegExp> = {
+  js: /\b(?:test|it)\s*\(\s*["'`]/,
+  ts: /\b(?:test|it)\s*\(\s*["'`]/,
+  py: /^\s*def\s+test_\w*\s*\(/m,
+};
+const FENCE = "```";
+const testsPrompt = (lang: string, raw: string) =>
+  `Write tests for this code. Put the code and the tests together in one runnable ${lang} block with no imports, so I can press Run. ` +
+  (RUNNABLE[lang] === "py" ? "Use plain test_ functions with assert. " : "Use test() and expect() (Jest style). ") +
+  `Cover normal cases, edge cases and errors.\n\n${FENCE}${lang}\n${raw}\n${FENCE}`;
+
 /* ---------- run output ---------- */
 type RunState = { out: RunOut[]; running: boolean; ok?: boolean; ms?: number };
 
 function RunPanel({ run, onClose }: { run: RunState; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { const el = ref.current; if (el) el.scrollTop = el.scrollHeight; }, [run.out.length]);
+
+  const passed = run.out.filter((o) => o.kind === "pass").length;
+  const failed = run.out.filter((o) => o.kind === "fail").length;
+  const tests = passed + failed > 0;
+  const title = run.running
+    ? tests ? `Testing… ${passed + failed} done` : "Running…"
+    : tests ? (failed ? `${failed} failed · ${passed} passed` : `All ${passed} test${passed > 1 ? "s" : ""} passed`)
+    : run.ok ? "Output" : "Finished with errors";
+  const dot = run.running ? "live" : tests ? (failed ? "bad" : "ok") : run.ok ? "ok" : "bad";
+
   return (
     <div className="run-out">
       <div className="run-head">
-        <span className={`run-dot ${run.running ? "live" : run.ok ? "ok" : "bad"}`} />
-        <b>{run.running ? "Running…" : run.ok ? "Output" : "Finished with errors"}</b>
+        <span className={`run-dot ${dot}`} />
+        <b>{title}</b>
         {!run.running && run.ms !== undefined && <small>{run.ms < 1000 ? `${Math.max(1, Math.round(run.ms))} ms` : `${(run.ms / 1000).toFixed(1)} s`}</small>}
         <button type="button" onClick={onClose} aria-label="Close output"><X size={13} strokeWidth={2} /></button>
       </div>
@@ -128,6 +151,7 @@ function RunPanel({ run, onClose }: { run: RunState; onClose: () => void }) {
 /* ---------- code block ---------- */
 function CodeBlock({ lang, raw, path, children }: { lang: string; raw: string; path: string; children?: ReactNode }) {
   const { open } = useArtifact();
+  const canSend = useCanSend();
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [run, setRun] = useState<RunState | null>(null);
@@ -139,6 +163,8 @@ function CodeBlock({ lang, raw, path, children }: { lang: string; raw: string; p
   const collapsed = long && !expanded;
   const numbered = lines >= 4 && !NO_NUMBERS.has(lang);
   const runKind = RUNNABLE[lang];
+  const hasTests = !!runKind && TEST_RE[runKind].test(raw);
+  const canAddTests = canSend && !!runKind && !hasTests && lines >= 4;
   const previewable = lang === "html" || lang === "svg";
 
   const copy = async () => { await navigator.clipboard.writeText(raw); setCopied(true); setTimeout(() => setCopied(false), 1200); };
@@ -160,7 +186,7 @@ function CodeBlock({ lang, raw, path, children }: { lang: string; raw: string; p
   };
 
   return (
-    <div className={`code ${collapsed ? "collapsed" : ""}`}>
+    <div className={`code ${collapsed ? "collapsed" : ""}`} data-lang={lang}>
       <div className="code-bar">
         <span className="code-lang">
           <i className={`lang-dot l-${lang || "txt"}`} />
@@ -168,9 +194,14 @@ function CodeBlock({ lang, raw, path, children }: { lang: string; raw: string; p
           <span className="code-name">{LANG[lang] ?? (lang || "code")}</span>
         </span>
         <div>
+          {canAddTests && (
+            <button type="button" onClick={() => sendToChat(testsPrompt(lang, raw))} title="Write tests for this code">
+              <FlaskConical size={13} strokeWidth={2} /> Tests
+            </button>
+          )}
           {runKind && (run?.running
             ? <button type="button" onClick={stop}><Square size={11} strokeWidth={2.5} /> Stop</button>
-            : <button type="button" className="run" onClick={start}><Play size={12} strokeWidth={2.5} /> Run</button>)}
+            : <button type="button" className="run" onClick={start}><Play size={12} strokeWidth={2.5} /> {hasTests ? "Run tests" : "Run"}</button>)}
           {previewable && <button type="button" onClick={() => open({ lang, code: raw })}><Eye size={13} strokeWidth={2} /> Preview</button>}
           <button type="button" onClick={copy}>
             {copied ? <><Check size={13} strokeWidth={2} /> Copied</> : <><Copy size={13} strokeWidth={2} /> Copy</>}
@@ -249,7 +280,7 @@ function Diff({ raw }: { raw: string }) {
   };
 
   return (
-    <div className={`code diff ${collapsed ? "collapsed" : ""}`}>
+    <div className={`code diff ${collapsed ? "collapsed" : ""}`} data-lang="diff">
       <div className="code-bar">
         <span className="code-lang">
           <i className="lang-dot l-diff" />

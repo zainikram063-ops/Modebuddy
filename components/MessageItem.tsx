@@ -12,6 +12,7 @@ import Flashcards, { type DeckData } from "./study/Flashcards";
 import Exam, { type ExamData } from "./study/Exam";
 import Plan, { type PlanData } from "./study/Plan";
 import Mermaid from "./study/Mermaid";
+import { DebugText } from "./coding/DebugCard";
 import { downloadZip, filesFromMarkdown } from "@/lib/files";
 
 type Part = NonNullable<Message["parts"]>[number];
@@ -122,7 +123,8 @@ function TextBlock({ text }: { text: string }) {
     <>
       {splitDiagrams(text).map((s, i) =>
         s.kind === "text" ? (
-          <GradeText key={i} text={s.text} />
+                    <DebugText key={i} text={s.text} render={(t, k) => <GradeText key={k} text={t} />} />
+
         ) : s.done ? (
           <Mermaid key={i} code={s.code} />
         ) : (
@@ -237,7 +239,8 @@ function MessageItem({ m, isLast, busy, onEdit, onRegenerate, onSend }: Props) {
   const [draft, setDraft] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const textAll = stripFollow((m.parts?.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("\n\n") || m.content).replace(FILE_RE, "")).replace(/<\/?grade[^>]*>/gi, "").trim();
+  const textAll = stripFollow((m.parts?.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("\n\n") || m.content).replace(FILE_RE, "")).replace(/<\/?(?:grade|debug)[^>]*>/gi, "")
+.trim();
   const cites = useMemo(() => {
     const map = new Map<string, string>();
     for (const x of textAll.matchAll(CITE_RE)) if (!map.has(x[2])) map.set(x[2], x[1]);

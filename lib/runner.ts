@@ -1,10 +1,10 @@
-export type RunOut = { kind: "log" | "info" | "warn" | "error" | "result" | "system"; text: string };
+export type RunOut = { kind: "log" | "info" | "warn" | "error" | "result" | "system" | "pass" | "fail"; text: string };
 export type RunHandle = { stop: () => void };
 type Cb = { onOut: (o: RunOut) => void; onDone: (ok: boolean, ms: number) => void };
 
 const blobWorker = (src: string) => new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
 
-/* ---------- JavaScript / TypeScript sandbox ---------- */
+/* ---------- JavaScript / TypeScript sandbox (with a small Jest-style test runner) ---------- */
 const JS_WORKER = `
 const fmt = (v) => {
   if (typeof v === "string") return v;
@@ -25,6 +25,7 @@ const fmt = (v) => {
     }, 2);
   } catch (e) { return String(v); }
 };
+const show = (v) => (typeof v === "string" ? JSON.stringify(v) : fmt(v));
 const where = (e) => {
   const m = /<anonymous>:(\\d+):(\\d+)/.exec((e && e.stack) || "");
   return m ? " (line " + (Number(m[1]) - 2) + ")" : "";
@@ -47,12 +48,129 @@ self.fetch = (input, init) => {
   return realFetch(input, init);
 };
 self.XMLHttpRequest = function () { throw new Error("Use fetch() instead of XMLHttpRequest."); };
+
+/* ---- tests ---- */
+const msgOf = (e) => (e && e.message !== undefined ? String(e.message) : String(e));
+const errMatches = (e, m) =>
+  m === undefined || (m instanceof RegExp ? m.test(msgOf(e)) : typeof m === "function" ? e instanceof m : msgOf(e).includes(String(m)));
+const assertFail = (msg) => { const e = new Error(msg); e.name = "AssertionError"; throw e; };
+const deepEq = (a, b, seen = new Map()) => {
+  if (Object.is(a, b)) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (seen.get(a) === b) return true;
+  seen.set(a, b);
+  if (a instanceof Date || b instanceof Date) return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+  if (a instanceof RegExp || b instanceof RegExp) return String(a) === String(b);
+  if (a instanceof Map || b instanceof Map) {
+    if (!(a instanceof Map && b instanceof Map) || a.size !== b.size) return false;
+    for (const [k, v] of a) if (!b.has(k) || !deepEq(v, b.get(k), seen)) return false;
+    return true;
+  }
+  if (a instanceof Set || b instanceof Set) {
+    if (!(a instanceof Set && b instanceof Set) || a.size !== b.size) return false;
+    for (const v of a) if (!b.has(v)) return false;
+    return true;
+  }
+  const ka = Object.keys(a).filter((k) => a[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => b[k] !== undefined);
+  if (ka.length !== kb.length) return false;
+  return ka.every((k) => deepEq(a[k], b[k], seen));
+};
+function matchers(actual, neg) {
+  const check = (pass, msg) => { if (!!pass === neg) assertFail((neg ? "expected NOT: " : "") + msg); };
+  const a = show(actual);
+  const m = {
+    toBe: (x) => check(Object.is(actual, x), "expected " + a + " to be " + show(x)),
+    toEqual: (x) => check(deepEq(actual, x), "expected " + a + " to equal " + show(x)),
+    toStrictEqual: (x) => check(deepEq(actual, x), "expected " + a + " to equal " + show(x)),
+    toBeTruthy: () => check(!!actual, "expected " + a + " to be truthy"),
+    toBeFalsy: () => check(!actual, "expected " + a + " to be falsy"),
+    toBeNull: () => check(actual === null, "expected " + a + " to be null"),
+    toBeUndefined: () => check(actual === undefined, "expected " + a + " to be undefined"),
+    toBeDefined: () => check(actual !== undefined, "expected a defined value"),
+    toBeNaN: () => check(Number.isNaN(actual), "expected " + a + " to be NaN"),
+    toContain: (x) => check(actual != null && (typeof actual === "string" ? actual.includes(x) : Array.from(actual).some((v) => Object.is(v, x))), "expected " + a + " to contain " + show(x)),
+    toContainEqual: (x) => check(actual != null && Array.from(actual).some((v) => deepEq(v, x)), "expected " + a + " to contain " + show(x)),
+    toHaveLength: (n) => check(actual != null && actual.length === n, "expected length " + n + ", got " + (actual == null ? actual : actual.length)),
+    toBeGreaterThan: (n) => check(actual > n, "expected " + a + " > " + show(n)),
+    toBeGreaterThanOrEqual: (n) => check(actual >= n, "expected " + a + " >= " + show(n)),
+    toBeLessThan: (n) => check(actual < n, "expected " + a + " < " + show(n)),
+    toBeLessThanOrEqual: (n) => check(actual <= n, "expected " + a + " <= " + show(n)),
+    toBeCloseTo: (n, d = 2) => check(Math.abs(actual - n) < Math.pow(10, -d) / 2, "expected " + a + " to be close to " + show(n)),
+    toMatch: (re) => check(typeof actual === "string" && (re instanceof RegExp ? re.test(actual) : actual.includes(re)), "expected " + a + " to match " + String(re)),
+    toBeInstanceOf: (C) => check(actual instanceof C, "expected " + a + " to be an instance of " + (C && C.name)),
+    toHaveProperty: (p, ...v) => {
+      const path = Array.isArray(p) ? p : String(p).split(".");
+      let o = actual, ok = true;
+      for (const k of path) { if (o == null || !(k in Object(o))) { ok = false; break; } o = o[k]; }
+      check(ok && (!v.length || deepEq(o, v[0])), "expected " + a + " to have property " + String(p) + (v.length ? " = " + show(v[0]) : ""));
+    },
+    toThrow: (x) => {
+      if (typeof actual !== "function") assertFail("toThrow needs a function, e.g. expect(() => fn()).toThrow()");
+      let err = null, threw = false;
+      try { actual(); } catch (e) { threw = true; err = e; }
+      check(threw && errMatches(err, x), threw ? "expected an error matching " + show(x) + ", got " + show(msgOf(err)) : "expected the function to throw");
+    },
+  };
+  m.toThrowError = m.toThrow;
+  return m;
+}
+const expect = (actual) => {
+  const m = matchers(actual, false);
+  m.not = matchers(actual, true);
+  m.resolves = new Proxy({}, { get: (_, k) => async (...args) => matchers(await actual, false)[k](...args) });
+  m.rejects = new Proxy({}, {
+    get: (_, k) => async (...args) => {
+      let err, threw = false;
+      try { await actual; } catch (e) { threw = true; err = e; }
+      if (!threw) assertFail("expected the promise to reject");
+      if (k === "toThrow" || k === "toThrowError") {
+        if (!errMatches(err, args[0])) assertFail("expected a rejection matching " + show(args[0]) + ", got " + show(msgOf(err)));
+        return;
+      }
+      return matchers(err, false)[k](...args);
+    },
+  });
+  return m;
+};
+const __tests = [], __before = [], __after = [], __path = [];
+const test = (name, fn) => { __tests.push({ name: __path.concat(String(name)).join(" › "), fn: fn }); };
+test.skip = () => {};
+test.todo = () => {};
+test.only = test;
+const describe = (name, fn) => { __path.push(String(name)); try { fn(); } finally { __path.pop(); } };
+describe.skip = () => {};
+describe.only = describe;
+self.test = test;
+self.it = test;
+self.describe = describe;
+self.expect = expect;
+self.beforeEach = (f) => { __before.push(f); };
+self.afterEach = (f) => { __after.push(f); };
+
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 self.onmessage = async (e) => {
   const t = performance.now();
   try {
     const r = await new AsyncFunction(e.data.code)();
     if (r !== undefined) send("result", [r]);
+    if (__tests.length) {
+      let failed = 0;
+      for (const tc of __tests) {
+        try {
+          for (const f of __before) await f();
+          await tc.fn();
+          for (const f of __after) await f();
+          postMessage({ kind: "pass", text: tc.name });
+        } catch (err) {
+          failed++;
+          postMessage({ kind: "fail", text: tc.name + " — " + msgOf(err) });
+        }
+      }
+      postMessage({ done: true, ok: failed === 0, ms: performance.now() - t });
+      return;
+    }
     postMessage({ done: true, ok: true, ms: performance.now() - t });
   } catch (err) {
     send("error", [fmt(err) + where(err)]);
@@ -111,7 +229,7 @@ function runJs(kind: "js" | "ts", code: string, cb: Cb): RunHandle {
   return { stop: () => { finished = true; clearTimeout(timer); w?.terminate(); } };
 }
 
-/* ---------- Python (Pyodide, loads once then stays warm) ---------- */
+/* ---------- Python (Pyodide, loads once then stays warm; runs test_ functions automatically) ---------- */
 const PY_WORKER = `
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js");
 let py = null;
@@ -127,6 +245,24 @@ const tidy = (msg) => {
   const i = lines.findIndex((l) => l.includes('File "<exec>"'));
   return (i > 0 ? ["Traceback (most recent call last):"].concat(lines.slice(i)) : lines).join("\\n").trim();
 };
+const PY_TESTS = [
+  "def __mb_tests():",
+  "    out = []",
+  "    for name, fn in list(globals().items()):",
+  "        if name.startswith('test_') and callable(fn):",
+  "            try:",
+  "                fn()",
+  "                out.append([name, True, ''])",
+  "            except AssertionError as e:",
+  "                tb = e.__traceback__",
+  "                while tb.tb_next:",
+  "                    tb = tb.tb_next",
+  "                out.append([name, False, (str(e) or 'assertion failed') + ' (line ' + str(tb.tb_lineno) + ')'])",
+  "            except Exception as e:",
+  "                out.append([name, False, type(e).__name__ + ': ' + str(e)])",
+  "    return out",
+  "__mb_tests()",
+].join("\\n");
 async function run(data) {
   cur = data.id;
   try { await boot; } catch (err) {
@@ -146,6 +282,18 @@ async function run(data) {
     if (r !== undefined && r !== null) {
       postMessage({ id: data.id, kind: "result", text: String(r) });
       if (r.destroy) r.destroy();
+    }
+    if (/^\\s*def\\s+test_/m.test(data.code)) {
+      const res = await py.runPythonAsync(PY_TESTS, { globals: ns });
+      const rows = res.toJs();
+      res.destroy();
+      let failed = 0;
+      for (const [name, ok, msg] of rows) {
+        if (!ok) failed++;
+        postMessage({ id: data.id, kind: ok ? "pass" : "fail", text: ok ? name : name + " — " + msg });
+      }
+      postMessage({ id: data.id, done: true, ok: failed === 0, ms: performance.now() - t });
+      return;
     }
     postMessage({ id: data.id, done: true, ok: true, ms: performance.now() - t });
   } catch (err) {

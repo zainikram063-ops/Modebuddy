@@ -24,6 +24,8 @@ import { MicButton, speak } from "./Voice";
 import { Icon } from "./Icons";
 import type { AppUser } from "./Workspace";
 import type { SettingsTab } from "./Settings";
+import SelectionMenu from "./coding/SelectionMenu";
+
 
 type Props = {
   id: string; initialMessages: Message[]; title: string; user: AppUser;
@@ -573,7 +575,11 @@ export default function ChatView(p: Props) {
             </div>
           </div>
         ) : (
+
+          
           <div className="thread">
+                    <SelectionMenu onSend={(t) => submitRef.current(t)} />
+
             {messages.map((m, i) => (
                                           <MessageItem key={m.id} m={m} isLast={i === messages.length - 1} busy={busy} onEdit={(t) => editRef.current(i, t)} onRegenerate={() => regenRef.current()} onSend={(t) => submitRef.current(t)} />
 
