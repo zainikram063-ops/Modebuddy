@@ -12,6 +12,7 @@ import { Check, ChevronDown, Copy, Download, Eye, FileCode2, FlaskConical, Play,
 import { useArtifact } from "./Artifacts";
 import { downloadZip, pathFrom } from "@/lib/files";
 import { sendToChat, useCanSend } from "@/lib/chat-bus";
+import ApplyButton from "./coding/ApplyButton";
 import type { RunHandle, RunOut } from "@/lib/runner";
 
 /* ---------- hast helpers ---------- */
@@ -202,6 +203,7 @@ function CodeBlock({ lang, raw, path, children }: { lang: string; raw: string; p
           {runKind && (run?.running
             ? <button type="button" onClick={stop}><Square size={11} strokeWidth={2.5} /> Stop</button>
             : <button type="button" className="run" onClick={start}><Play size={12} strokeWidth={2.5} /> {hasTests ? "Run tests" : "Run"}</button>)}
+          {path && <ApplyButton path={path} code={raw} />}
           {previewable && <button type="button" onClick={() => open({ lang, code: raw })}><Eye size={13} strokeWidth={2} /> Preview</button>}
           <button type="button" onClick={copy}>
             {copied ? <><Check size={13} strokeWidth={2} /> Copied</> : <><Copy size={13} strokeWidth={2} /> Copy</>}
@@ -288,6 +290,7 @@ function Diff({ raw }: { raw: string }) {
           <span className="diff-stat"><em className="add">+{adds}</em><em className="del">−{dels}</em></span>
         </span>
         <div>
+          <ApplyButton diff={raw} />
           <button type="button" onClick={() => copy("new")}>
             {copied === "new" ? <><Check size={13} strokeWidth={2} /> Copied</> : <><Copy size={13} strokeWidth={2} /> Copy new code</>}
           </button>

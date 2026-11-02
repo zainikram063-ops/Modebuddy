@@ -4,11 +4,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import type { Message } from "ai";
-import { Columns2, Globe, Layers, Share2, Shuffle, Timer, X } from "lucide-react";
+import { Columns2, FolderOpen, Globe, Layers, Share2, Shuffle, Timer, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { modeCopy, onAccent, type Mode } from "@/lib/modes";
 import { modelLabel, type ModelConfig } from "@/lib/providers-meta";
 import { DEFAULT_STUDY, STUDY_CHIPS, STUDY_KEY, isStudyChip, parseStudy, studyChipPrompt, type StudySettings } from "@/lib/study";
+import { droppedFolder, projectFromEntry } from "@/lib/project";
 import type { Connector } from "@/lib/types";
 import { VERSION } from "@/lib/version";
 import MessageItem, { FOLLOW_RE } from "./MessageItem";
@@ -25,7 +26,9 @@ import { Icon } from "./Icons";
 import type { AppUser } from "./Workspace";
 import type { SettingsTab } from "./Settings";
 import SelectionMenu from "./coding/SelectionMenu";
-
+import ProjectBar from "./coding/ProjectBar";
+import ProjectPanel from "./coding/ProjectPanel";
+import { useProject } from "./coding/useProject";
 
 type Props = {
   id: string; initialMessages: Message[]; title: string; user: AppUser;
@@ -38,7 +41,7 @@ type Pending = { id: string; file: File; kind: "upload" | "text"; preview?: stri
 type Switched = { from: string; to: string; name: string; reason?: string };
 type Lecture = { name: string; stage: "uploading" | "transcribing"; started: number };
 
-const TEXT_EXT = /\.(txt|md|markdown|csv|tsv|json|jsonl|js|jsx|ts|tsx|py|rb|go|rs|java|kt|swift|c|cc|cpp|h|cs|php|css|scss|html|xml|ya?ml|toml|ini|sql|sh|log)$/i;
+const TEXT_EXT = /\.(txt|md|markdown|csv|tsv|json|jsonl|js|jsx|ts|tsx|py|rb|go|rs|java|kt|swift|c|cc|cpp|h|cs|php|css|scss|html|xml|ya?ml|toml|ini|sql|sh|log|diff|patch)$/i;
 const AUDIO_EXT = /\.(mp3|m4a|wav|aac|ogg|oga|flac|webm|mp4|mov|mkv)$/i;
 const PDF_CHIP = "Save as PDF";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -51,6 +54,9 @@ export default function ChatView(p: Props) {
   const [autoSwitch, setAutoSwitch] = useState(true);
   const [study, setStudy] = useState<StudySettings>(DEFAULT_STUDY);
   const isStudy = p.mode.id === "study";
+  const codeMode = /code/i.test(`${p.mode.id} ${p.mode.name}`);
+  const proj = useProject(p.id, codeMode);
+  const [projectOpen, setProjectOpen] = useState<false | "files" | "review">(false);
 
   useEffect(() => {
     try { const s = localStorage.getItem(STUDY_KEY); if (s) setStudy(parseStudy(JSON.parse(s))); } catch {}
@@ -65,6 +71,7 @@ export default function ChatView(p: Props) {
     body: {
       model: p.modelConfig, modeId: p.mode.id, connectors, memoryEnabled: p.memoryEnabled,
       webSearch: webOn, autoMode: autoSwitch, study: isStudy ? study : undefined,
+      project: codeMode ? proj.payload : undefined,
     },
     onResponse: (res) => {
       const e = res.headers.get("x-connector-errors");
@@ -103,7 +110,6 @@ export default function ChatView(p: Props) {
   const handledSwitch = useRef(new Set(p.initialMessages.map((m) => m.id)));
   const copy = modeCopy(p.mode);
   useChatMotion(scrollRef, p.id);
-  const codeMode = /code/i.test(`${p.mode.id} ${p.mode.name}`);
   const examDay = isStudy && study.examDay;
 
   /* study: cards due count for the top-bar pill */
@@ -275,6 +281,23 @@ export default function ChatView(p: Props) {
   const submitRef = useRef(submit);
   submitRef.current = submit;
 
+  /* ---------- project ---------- */
+  const reviewChanges = (diff: string) => {
+    setProjectOpen(false);
+    submit(`Review my changes and write a commit message.\n\n<file name="changes.diff">\n${diff}\n</file>`);
+  };
+
+  const dropProject = async (dir: FileSystemDirectoryEntry) => {
+    p.toast("Reading your project…");
+    try {
+      const pr = await projectFromEntry(dir);
+      proj.add(pr);
+      p.toast(`${pr.name} added. Pin files from the bar above the message box.`);
+    } catch (e) {
+      p.toast((e as Error).message || "Couldn't read that folder.");
+    }
+  };
+
   /* ---------- study tools ---------- */
   const runTool = (t: StudyToolAction) => {
     if (!t.prefillOnly && messages.length && !busy) { submit(t.text); return; }
@@ -361,10 +384,12 @@ export default function ChatView(p: Props) {
     if (last?.role === "assistant") await supabase.from("messages").delete().eq("id", last.id);
     reload();
   }, [busy, messages, supabase, reload]);
-    const editRef = useRef(editMessage);
+
+  const editRef = useRef(editMessage);
   editRef.current = editMessage;
   const regenRef = useRef(regenerate);
   regenRef.current = regenerate;
+
   /* ---------- compare: keep the winning answer ---------- */
   const keepCompare = useCallback(async (fresh: Message[]) => {
     setCompareOpen(false);
@@ -495,7 +520,13 @@ export default function ChatView(p: Props) {
       className={`chat ${codeMode ? "code-mode" : ""} ${examDay ? "exam-day" : ""}`}
       onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDrag(true); } }}
       onDragLeave={(e) => { if (e.currentTarget === e.target) setDrag(false); }}
-      onDrop={(e) => { e.preventDefault(); setDrag(false); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDrag(false);
+        const dir = codeMode ? droppedFolder(e.dataTransfer.items) : null;
+        if (dir) { dropProject(dir); return; }
+        if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+      }}
     >
       <header className="topbar">
         <button className="icon-btn menu" onClick={p.onMenu} aria-label="Open sidebar"><Icon name="menu" /></button>
@@ -561,6 +592,11 @@ export default function ChatView(p: Props) {
                 <Icon name="key" /> Add your API key to start. Gemini is free to try →
               </button>
             )}
+            {codeMode && proj.ready && !proj.project && (
+              <button className="key-cta proj-cta" onClick={() => setProjectOpen("files")}>
+                <FolderOpen size={15} strokeWidth={1.75} /> Add your project so answers use your real files →
+              </button>
+            )}
             {isStudy && (
               <StudyHome
                 refreshKey={statsKey}
@@ -575,15 +611,13 @@ export default function ChatView(p: Props) {
             </div>
           </div>
         ) : (
-
-          
           <div className="thread">
-                    <SelectionMenu onSend={(t) => submitRef.current(t)} />
-
+            <SelectionMenu onSend={(t) => submitRef.current(t)} />
             {messages.map((m, i) => (
-                                          <MessageItem key={m.id} m={m} isLast={i === messages.length - 1} busy={busy} onEdit={(t) => editRef.current(i, t)} onRegenerate={() => regenRef.current()} onSend={(t) => submitRef.current(t)} />
-
-
+              <MessageItem
+                key={m.id} m={m} isLast={i === messages.length - 1} busy={busy}
+                onEdit={(t) => editRef.current(i, t)} onRegenerate={() => regenRef.current()} onSend={(t) => submitRef.current(t)}
+              />
             ))}
             {status === "submitted" && (
               <div className="msg assistant"><div className="avatar" aria-hidden>⌥</div><Thinking code={codeMode} /></div>
@@ -606,7 +640,12 @@ export default function ChatView(p: Props) {
         )}
       </div>
 
-      {drag && <div className="dropzone"><Icon name="image" size={30} />Drop images, PDFs or text files</div>}
+      {drag && (
+        <div className="dropzone">
+          <Icon name="image" size={30} />
+          {codeMode ? "Drop files, or your whole project folder" : "Drop images, PDFs or text files"}
+        </div>
+      )}
 
       {switched && (
         <div className="mode-note" role="status">
@@ -645,6 +684,7 @@ export default function ChatView(p: Props) {
 
       <form className="composer" onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <div className="composer-box">
+          {codeMode && <ProjectBar proj={proj} onOpen={setProjectOpen} />}
           {files.length > 0 && (
             <div className="file-row">
               {files.map((f) => (
@@ -662,8 +702,14 @@ export default function ChatView(p: Props) {
             value={input}
             placeholder={
               messages.length
-                ? isStudy ? "Ask anything, or tap Why? · Simpler · Analogy…" : "Say less. Try “2”, “optimize”, “shorter”…"
-                : `Message ModeBuddy · ${p.mode.name} mode`
+                ? isStudy
+                  ? "Ask anything, or tap Why? · Simpler · Analogy…"
+                  : codeMode && proj.project
+                    ? `Ask about ${proj.project.name}…`
+                    : "Say less. Try “2”, “optimize”, “shorter”…"
+                : codeMode && proj.project
+                  ? `Ask about ${proj.project.name}, or paste an error…`
+                  : `Message ModeBuddy · ${p.mode.name} mode`
             }
             onChange={(e) => {
               setInput(e.target.value);
@@ -676,7 +722,7 @@ export default function ChatView(p: Props) {
             <button type="button" className="tool" onClick={() => fileRef.current?.click()} title="Attach files"><Icon name="clip" /></button>
             <input
               ref={fileRef} type="file" multiple hidden
-              accept="image/*,application/pdf,.txt,.md,.csv,.json,.js,.ts,.tsx,.py,.html,.css,.yml,.yaml,.sql,.sh"
+              accept="image/*,application/pdf,.txt,.md,.csv,.json,.js,.ts,.tsx,.py,.html,.css,.yml,.yaml,.sql,.sh,.diff,.patch"
               onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }}
             />
             <MicButton
@@ -746,6 +792,9 @@ export default function ChatView(p: Props) {
       )}
       {reviewOpen && <Review onClose={() => { setReviewOpen(false); setStatsKey((k) => k + 1); }} />}
       {materialOpen && <Material onClose={() => setMaterialOpen(false)} toast={p.toast} />}
+      {projectOpen && (
+        <ProjectPanel proj={proj} tab={projectOpen} onClose={() => setProjectOpen(false)} onReview={reviewChanges} toast={p.toast} />
+      )}
     </div>
   );
 }

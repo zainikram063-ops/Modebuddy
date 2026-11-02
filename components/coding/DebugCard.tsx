@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { Bug, CheckCircle2, FileCode2, Search, Wrench } from "lucide-react";
+import type { ReactNode } from "react";
+import { Bug, CheckCircle2, Search, Wrench } from "lucide-react";
 import { InlineMd } from "../Markdown";
+import { LocChip, RootNote, locations } from "./Locations";
+import { ReviewCard } from "./ReviewCard";
 
-const DEBUG_RE = /<debug>([\s\S]*?)(<\/debug>|$)/i;
+const BLOCK_RE = /<(debug|review)>([\s\S]*?)(<\/\1>|$)/i;
 type Key = "error" | "where" | "cause" | "fix" | "confirm";
 const KEY_RE = /^\s*[-*]?\s*\**\s*(error|where|cause|fix|confirm)\s*\**\s*:\s*\**\s*(.*)$/i;
-const LOC_RE = /([\w./@~\-[\]()]+\.[a-z]{1,6})"?(?:(?::|,\s*line\s+)(\d+))?(?::(\d+))?/gi;
-const ROOT_KEY = "mb-project-root";
 
 const STEPS: { key: Key; label: string; icon: JSX.Element }[] = [
   { key: "cause", label: "Likely cause", icon: <Search size={13} strokeWidth={2} /> },
@@ -36,49 +36,10 @@ function splitError(e: string): [string, string] {
   return m ? [m[1], m[2].trim()] : ["", e.trim()];
 }
 
-type Loc = { path: string; line?: number; col?: number };
-function locations(where: string): Loc[] {
-  const seen = new Set<string>();
-  const out: Loc[] = [];
-  for (const m of where.matchAll(LOC_RE)) {
-    const loc = { path: m[1], line: m[2] ? Number(m[2]) : undefined, col: m[3] ? Number(m[3]) : undefined };
-    const key = `${loc.path}:${loc.line ?? ""}`;
-    if (!seen.has(key)) { seen.add(key); out.push(loc); }
-  }
-  return out.slice(0, 6);
-}
-
-const base = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
-
-function askRoot(current: string) {
-  const v = prompt(
-    "To open files in VS Code, paste your project folder's full path.\n(In Terminal, go into your project folder and run: pwd)",
-    current
-  );
-  if (!v?.trim()) return null;
-  const root = v.trim().replace(/\/+$/, "");
-  localStorage.setItem(ROOT_KEY, root);
-  return root;
-}
-
-function openInEditor(l: Loc, root: string) {
-  let r = root;
-  if (!l.path.startsWith("/") && !r) {
-    const v = askRoot("");
-    if (!v) return null;
-    r = v;
-  }
-  const full = l.path.startsWith("/") ? l.path : `${r}/${l.path.replace(/^\.?\//, "")}`;
-  window.location.href = `vscode://file${full}${l.line ? `:${l.line}${l.col ? `:${l.col}` : ""}` : ""}`;
-  return r;
-}
-
 export function DebugCard({ body, done }: { body: string; done: boolean }) {
   const d = parse(body);
   const [type, msg] = splitError(d.error ?? "");
   const locs = locations(d.where ?? "");
-  const [root, setRoot] = useState("");
-  useEffect(() => { setRoot(localStorage.getItem(ROOT_KEY) ?? ""); }, []);
 
   return (
     <div className={`debug-card ${done ? "" : "loading"}`}>
@@ -92,18 +53,8 @@ export function DebugCard({ body, done }: { body: string; done: boolean }) {
 
       {locs.length > 0 && (
         <div className="dbg-locs">
-          {locs.map((l) => (
-            <button key={`${l.path}:${l.line ?? ""}`} type="button" className="dbg-loc"
-                    title={`Open ${l.path}${l.line ? `:${l.line}` : ""} in VS Code`}
-                    onClick={() => { const r = openInEditor(l, root); if (r) setRoot(r); }}>
-              <FileCode2 size={12} strokeWidth={2} />{base(l.path)}{l.line ? `:${l.line}` : ""}
-            </button>
-          ))}
-          {root && (
-            <button type="button" className="dbg-root" title={root} onClick={() => { const r = askRoot(root); if (r) setRoot(r); }}>
-              in …/{base(root)} · change
-            </button>
-          )}
+          {locs.map((l) => <LocChip key={`${l.path}:${l.line ?? ""}`} loc={l} />)}
+          <RootNote />
         </div>
       )}
 
@@ -123,17 +74,18 @@ export function DebugCard({ body, done }: { body: string; done: boolean }) {
   );
 }
 
-/** Pulls a <debug> block out of a message and renders the text around it with `render` */
+/** Pulls <debug> and <review> blocks out of a message; the text around them goes through `render` */
 export function DebugText({ text, render }: { text: string; render: (t: string, key: string) => ReactNode }) {
-  const m = text.match(DEBUG_RE);
+  const m = text.match(BLOCK_RE);
   if (!m || m.index === undefined) return <>{render(text, "all")}</>;
   const before = text.slice(0, m.index);
   const after = text.slice(m.index + m[0].length);
+  const done = !!m[3];
   return (
     <>
       {before.trim() && render(before, "before")}
-      <DebugCard body={m[1]} done={!!m[2]} />
-      {after.trim() && render(after, "after")}
+      {m[1].toLowerCase() === "debug" ? <DebugCard body={m[2]} done={done} /> : <ReviewCard body={m[2]} done={done} />}
+      {after.trim() && <DebugText text={after} render={render} />}
     </>
   );
 }
