@@ -6,7 +6,7 @@ const API = "https://api.assemblyai.com/v2";
 const fail = (status: number, error: string) => Response.json({ error }, { status });
 
 async function guard() {
-  const db = createClient();
+  const db = await createClient();
   const { data: { user } } = await db.auth.getUser();
   if (!user) return { err: fail(401, "Please sign in again.") };
   const key = process.env.ASSEMBLYAI_API_KEY;

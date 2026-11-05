@@ -1,5 +1,6 @@
 "use client";
 
+import "@/lib/polyfills";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PROVIDERS, type ProviderId } from "@/lib/providers-meta";

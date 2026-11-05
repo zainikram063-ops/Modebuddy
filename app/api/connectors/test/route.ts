@@ -5,7 +5,7 @@ import type { Connector } from "@/lib/types";
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ ok: false, error: "Sign in again." }, { status: 401 });
 

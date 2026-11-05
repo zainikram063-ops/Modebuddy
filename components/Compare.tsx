@@ -1,5 +1,6 @@
 "use client";
 
+import "@/lib/polyfills";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import type { Message } from "ai";
@@ -8,6 +9,7 @@ import { PROVIDERS, modelLabel, type ModelConfig, type ProviderId } from "@/lib/
 import MessageItem from "./MessageItem";
 import Thinking from "./Thinking";
 import { Icon } from "./Icons";
+import Waiting from "./Waiting";
 
 type Props = {
   chatId: string; history: Message[]; modeId: string; code: boolean; modelConfig: ModelConfig; webSearch: boolean;
@@ -71,7 +73,7 @@ function Column({ id, label, cfg, history, modeId, code, webSearch, prompt, run,
         {fresh.map((m, i) => (
           <MessageItem key={m.id} m={m} isLast={i === fresh.length - 1} busy={m.role === "user" ? true : busy} onEdit={() => {}} onRegenerate={() => reload()} />
         ))}
-        {status === "submitted" && <div className="msg assistant"><div className="avatar" aria-hidden>⌥</div><Thinking code={code} /></div>}
+        {status === "submitted" && <div className="msg assistant waiting"><Waiting code={code} /></div>}
         {error && (
           <div className="error" role="alert">
             <span>{errMsg(error)}</span>

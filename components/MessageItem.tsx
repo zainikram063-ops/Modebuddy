@@ -16,6 +16,7 @@ import { DebugText } from "./coding/DebugCard";
 import { downloadZip, filesFromMarkdown } from "@/lib/files";
 import Sources from "./Sources";
 import ModeIcon from "@/components/ModeIcon";
+import type { JSX } from "react";
 
 type Part = NonNullable<Message["parts"]>[number];
 type ToolInv = { state: "partial-call" | "call" | "result"; toolCallId: string; toolName: string; args?: unknown; result?: unknown };
@@ -143,7 +144,7 @@ function WebCard({ inv, cites }: { inv: ToolInv; cites: Map<string, string> }) {
   if (inv.state !== "result")
     return (
       <div className="web-card searching">
-        <Globe size={14} strokeWidth={1.75} /> Searching{query && <>: <em>{query}</em></>}…
+        <Globe size={14} strokeWidth={1.75} /> <span className="ws-label">Searching the web</span>{query && <span className="ws-query"><span className="ws-q" style={{ ["--n" as string]: query.length } as CSSProperties}>{query}</span></span>}<span className="ws-dots"><i /><i /><i /></span>
       </div>
     );
 
@@ -183,7 +184,7 @@ const PRACTICE_META: Record<string, { icon: JSX.Element; loading: string }> = {
 
 function PracticeCard({ inv, onSend }: { inv: ToolInv; onSend?: (t: string) => void }) {
   const meta = PRACTICE_META[inv.toolName];
-  if (inv.state !== "result") return <div className="web-card searching"><ModeIcon icon={meta.icon} /> {meta.loading}…</div>;
+  if (inv.state !== "result") return <div className="web-card searching"><ModeIcon icon={meta.icon} /> <span className="ws-label">{meta.loading}</span><span className="ws-dots"><i /><i /><i /></span></div>;
   const r = inv.result as { ok?: boolean; error?: string };
   if (!r?.ok) return <div className="web-card err"><ModeIcon icon={meta.icon} /> Couldn&apos;t create it{r?.error ? ` · ${r.error}` : ""}</div>;
   if (inv.toolName === "create_quiz") return <Quiz id={inv.toolCallId} data={r as QuizData} onSend={onSend} />;

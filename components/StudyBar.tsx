@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { STUDY_LEVELS, type StudySettings } from "@/lib/study";
 import ModeIcon from "@/components/ModeIcon";
+import type { JSX } from "react";
 
 export type StudyToolAction = { text: string; prefill: string; prefillOnly?: boolean };
 type Props = {

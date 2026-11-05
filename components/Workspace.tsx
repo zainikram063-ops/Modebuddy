@@ -1,5 +1,6 @@
 "use client";
 
+import "@/lib/polyfills";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Message } from "ai";
@@ -30,6 +31,9 @@ export default function Workspace({ user }: { user: AppUser }) {
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
   const [sideOpen, setSideOpen] = useState(false);
+  const [sideClosed, setSideClosed] = useState(false);
+  useEffect(() => { setSideClosed(localStorage.getItem("mb-side-closed") === "1"); }, []);
+  const toggleSide = () => setSideClosed((c) => { localStorage.setItem("mb-side-closed", c ? "0" : "1"); return !c; });
 
   const modes = useMemo(() => [...BUILTIN_MODES, ...customModes.map((m) => ({ ...m, builtin: false }))], [customModes]);
   const activeConvo = convos.find((c) => c.id === active.id);
@@ -134,13 +138,16 @@ export default function Workspace({ user }: { user: AppUser }) {
 
   return (
     <ArtifactProvider>
-      <div className={`app ${sideOpen ? "side-open" : ""}`}>
+      <div className={`app ${sideOpen ? "side-open" : ""} ${sideClosed ? "side-closed" : ""}`}>
         <Sidebar
           user={user} convos={convos} activeId={active.id} modes={modes}
           onNew={newChat} onOpen={openConvo} onRename={renameConvo} onPin={pinConvo} onDelete={deleteConvo}
           openSettings={setSettingsTab} onSignOut={signOut}
         />
         <div className="scrim" onClick={() => setSideOpen(false)} />
+        <button className="side-toggle" onClick={toggleSide} aria-label={sideClosed ? "Show chats" : "Hide chats"} title={sideClosed ? "Show chats" : "Hide chats"}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={sideClosed ? "M9 6l6 6-6 6" : "M15 6l-6 6 6 6"} /></svg>
+        </button>
 
         <main className="main">
           {active.initial === null ? (

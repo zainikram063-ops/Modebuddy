@@ -40,7 +40,7 @@ function sanitize(ms: Message[]) {
 }
 
 async function getUser() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   return { supabase, user };
 }

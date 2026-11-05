@@ -10,7 +10,7 @@ const TEXT_EXT = /\.(txt|md|markdown|csv|tsv|json|html?|xml|ya?ml|tex)$/i;
 const fail = (status: number, error: string) => Response.json({ error }, { status });
 
 async function auth() {
-  const db = createClient();
+  const db = await createClient();
   const { data: { user } } = await db.auth.getUser();
   return { db, user };
 }

@@ -1,6 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
+import "@/lib/polyfills";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import type { Message } from "ai";
@@ -36,6 +37,7 @@ import ProjectPanel from "./coding/ProjectPanel";
 import { useProject } from "./coding/useProject";
 import ModeIcon from "@/components/ModeIcon";
 import Floating from "./Floating";
+import Waiting from "./Waiting";
 
 type Props = {
   id: string; initialMessages: Message[]; title: string; user: AppUser;
@@ -644,7 +646,7 @@ export default function ChatView(p: Props) {
               />
             ))}
             {status === "submitted" && (
-              <div className="msg assistant"><div className="avatar" aria-hidden>⌥</div><Thinking code={codeMode} /></div>
+              <div className="msg assistant waiting"><Waiting code={codeMode} /></div>
             )}
             {errText && (
               <div className="error" role="alert">

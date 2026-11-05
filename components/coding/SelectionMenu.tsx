@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Bug, Feather, Gauge, Lightbulb, Sparkles, Type } from "lucide-react";
 import { setSender } from "@/lib/chat-bus";
 import ModeIcon from "@/components/ModeIcon";
+import type { JSX } from "react";
 
 type Sel = { text: string; lang: string; code: boolean; x: number; top: number; bottom: number };
 type Action = { label: string; icon: JSX.Element; make: (s: Sel) => string; show?: (s: Sel) => boolean };

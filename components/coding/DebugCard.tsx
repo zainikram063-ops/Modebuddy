@@ -6,6 +6,7 @@ import { InlineMd } from "../Markdown";
 import { LocChip, RootNote, locations } from "./Locations";
 import { ReviewCard } from "./ReviewCard";
 import ModeIcon from "@/components/ModeIcon";
+import type { JSX } from "react";
 
 const BLOCK_RE = /<(debug|review)>([\s\S]*?)(<\/\1>|$)/i;
 type Key = "error" | "where" | "cause" | "fix" | "confirm";

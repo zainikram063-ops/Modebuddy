@@ -64,7 +64,7 @@ function friendlyError(e: unknown, provider: string) {
 
 async function handlePOST(req: Request) {
   // ---- auth ----
-  const auth = createServerSupabase();
+  const auth = await createServerSupabase();
   const { data: { user } } = await auth.auth.getUser();
   if (!user) return fail(401, "Please sign in again.");
   const { data: { session } } = await auth.auth.getSession();
