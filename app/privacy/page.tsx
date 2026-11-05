@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export const metadata = { title: "Privacy Policy · ModeBuddy" };
 
-const EMAIL = "your@email.com";
+const EMAIL = "modebuddy5@email.com";
 
 export default function Privacy() {
   return (
