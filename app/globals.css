@@ -1841,3 +1841,14 @@ body.art-open { transition: margin-right .2s; }
   .side-toggle:hover { opacity: 1; width: 22px; }
   .app.side-closed .side-toggle { left: 0; }
 }
+
+/* ===== Legal pages ===== */
+.legal-wrap { height: 100dvh; overflow-y: auto; background: var(--bg); }
+.legal { max-width: 720px; margin: 0 auto; padding: 48px 22px 80px; color: var(--ink); line-height: 1.65; font-size: 15.5px; }
+.legal h1 { font-size: 30px; line-height: 1.2; margin: 0 0 6px; }
+.legal h2 { font-size: 18px; margin: 30px 0 8px; }
+.legal ul { padding-left: 20px; margin: 0; }
+.legal li { margin: 6px 0; }
+.legal a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.legal-date { color: var(--ink-3); font-size: 13.5px; margin: 0 0 22px; }
+.legal-back { margin-top: 36px; }
