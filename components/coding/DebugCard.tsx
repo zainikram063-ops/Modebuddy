@@ -5,6 +5,7 @@ import { Bug, CheckCircle2, Search, Wrench } from "lucide-react";
 import { InlineMd } from "../Markdown";
 import { LocChip, RootNote, locations } from "./Locations";
 import { ReviewCard } from "./ReviewCard";
+import ModeIcon from "@/components/ModeIcon";
 
 const BLOCK_RE = /<(debug|review)>([\s\S]*?)(<\/\1>|$)/i;
 type Key = "error" | "where" | "cause" | "fix" | "confirm";
@@ -64,7 +65,7 @@ export function DebugCard({ body, done }: { body: string; done: boolean }) {
           if (!v && done) return null;
           return (
             <li key={s.key} className={`dbg-step ${s.key}`} style={{ animationDelay: `${i * 90}ms` }}>
-              <span className="dbg-label">{s.icon}{s.label}</span>
+              <span className="dbg-label"><ModeIcon icon={s.icon} />{s.label}</span>
               <div className="dbg-text">{v ? <InlineMd text={v} /> : <i className="dbg-skel" />}</div>
             </li>
           );

@@ -12,6 +12,9 @@ import { weakSpots, weakNote, type Attempt } from "@/lib/progress";
 import { loadConnectorTools } from "@/lib/mcp";
 import type { Connector } from "@/lib/types"
 import { CODE_NOTE } from "@/lib/code";
+import { buddyNote } from "@/lib/buddy";
+import { ARTIFACT_NOTE } from "@/lib/artifact-note";
+import { chatGuard } from "@/lib/guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -59,7 +62,7 @@ function friendlyError(e: unknown, provider: string) {
   return msg.slice(0, 300);
 }
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   // ---- auth ----
   const auth = createServerSupabase();
   const { data: { user } } = await auth.auth.getUser();
@@ -82,7 +85,7 @@ export async function POST(req: Request) {
   const messages = (body.messages ?? []).slice(-60);
   if (!conversationId || !messages.length) return fail(400, "Nothing to send.");
   if (!cfg?.provider) return fail(400, "Pick a model in Settings → Models.");
-  if (!cfg.apiKey && cfg.provider !== "custom") return fail(400, `Add your ${cfg.provider} API key in Settings → Models.`);
+  if (!process.env.GEMINI_API_KEY) return fail(400, `Add your ${cfg.provider} API key in Settings → Models.`);
 
   let model;
   try { model = createModel(cfg); } catch (e) { return fail(400, (e as Error).message); }
@@ -236,6 +239,8 @@ export async function POST(req: Request) {
 
 
 if (/code/i.test(`${mode.id} ${mode.name}`)) system += `\n\n${CODE_NOTE}`;
+if (mode.id === "default") system += `\n\n${buddyNote()}`;
+system += `\n\n${ARTIFACT_NOTE}`;
 
   const result = streamText({
     model,
@@ -272,4 +277,9 @@ if (/code/i.test(`${mode.id} ${mode.name}`)) system += `\n\n${CODE_NOTE}`;
     headers: Object.keys(headers).length ? headers : undefined,
     getErrorMessage: (e) => friendlyError(e, cfg.provider),
   });
+}
+
+/* signed-in users only, with a daily free limit */
+export async function POST(req: Request) {
+  return (await chatGuard(req)) ?? handlePOST(req as Parameters<typeof handlePOST>[0]);
 }

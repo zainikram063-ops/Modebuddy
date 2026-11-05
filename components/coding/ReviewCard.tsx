@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, Check, CheckCircle2, Copy, GitCommit, Terminal, XCircle } from "lucide-react";
 import { InlineMd } from "../Markdown";
 import { LocChip, RootNote, locations } from "./Locations";
+import ModeIcon from "@/components/ModeIcon";
 
 type Sev = "high" | "medium" | "low";
 type Issue = { sev: Sev; loc: string; title: string; detail: string };
@@ -72,7 +73,7 @@ export function ReviewCard({ body, done }: { body: string; done: boolean }) {
   return (
     <div className={`review-card v-${v.key} ${done ? "" : "loading"}`}>
       <header className="rv-head">
-        <span className="rv-badge">{v.icon}{v.label}</span>
+        <span className="rv-badge"><ModeIcon icon={v.icon} />{v.label}</span>
         <p className="rv-sum">{r.summary ? <InlineMd text={r.summary} /> : done ? "" : "Reading your changes…"}</p>
         {counts.length > 0 && (
           <span className="rv-counts">

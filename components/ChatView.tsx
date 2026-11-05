@@ -7,7 +7,12 @@ import type { Message } from "ai";
 import { Columns2, FolderOpen, Globe, Layers, Share2, Shuffle, Timer, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { modeCopy, onAccent, type Mode } from "@/lib/modes";
-import { modelLabel, type ModelConfig } from "@/lib/providers-meta";
+import type { ModelConfig } from "@/lib/providers-meta";
+import ModelPicker, { useModelChoice } from "./ModelPicker";
+import { ArtifactPanel } from "./Artifacts";
+import Reminders from "./Reminders";
+import BuddyHome from "./BuddyHome";
+import Greeting from "./Greeting";
 import { DEFAULT_STUDY, STUDY_CHIPS, STUDY_KEY, isStudyChip, parseStudy, studyChipPrompt, type StudySettings } from "@/lib/study";
 import { droppedFolder, projectFromEntry } from "@/lib/project";
 import type { Connector } from "@/lib/types";
@@ -29,6 +34,8 @@ import SelectionMenu from "./coding/SelectionMenu";
 import ProjectBar from "./coding/ProjectBar";
 import ProjectPanel from "./coding/ProjectPanel";
 import { useProject } from "./coding/useProject";
+import ModeIcon from "@/components/ModeIcon";
+import Floating from "./Floating";
 
 type Props = {
   id: string; initialMessages: Message[]; title: string; user: AppUser;
@@ -51,6 +58,18 @@ export default function ChatView(p: Props) {
   const supabase = useMemo(() => createClient(), []);
   const connectors = useMemo(() => p.connectors.filter((c) => c.enabled), [p.connectors]);
   const [webOn, setWebOn] = useState(false);
+  const [modelId, setModelId] = useModelChoice();
+  const ownKey = p.modelConfig.apiKey || p.modelConfig.provider === "custom" ? p.modelConfig : null;
+  const modelCfg: ModelConfig = modelId.startsWith("byok:") && ownKey ? { ...ownKey, model: modelId.slice(5) } : { provider: "google", model: modelId, apiKey: "" };
+  useEffect(() => {
+    const h = (e: Event) => {
+      const want = String((e as CustomEvent<string>).detail).toLowerCase();
+      const m = p.modes.find((x) => x.id.toLowerCase() === want || x.name.toLowerCase() === want);
+      if (m) p.onModeChange(m.id); else p.toast("That mode isn't available.");
+    };
+    addEventListener("mb-switch-mode", h);
+    return () => removeEventListener("mb-switch-mode", h);
+  }, [p]);
   const [autoSwitch, setAutoSwitch] = useState(true);
   const [study, setStudy] = useState<StudySettings>(DEFAULT_STUDY);
   const isStudy = p.mode.id === "study";
@@ -69,7 +88,7 @@ export default function ChatView(p: Props) {
     sendExtraMessageFields: true,
     experimental_throttle: 40,
     body: {
-      model: p.modelConfig, modeId: p.mode.id, connectors, memoryEnabled: p.memoryEnabled,
+      model: modelCfg, modeId: p.mode.id, connectors, memoryEnabled: p.memoryEnabled,
       webSearch: webOn, autoMode: autoSwitch, study: isStudy ? study : undefined,
       project: codeMode ? proj.payload : undefined,
     },
@@ -84,6 +103,15 @@ export default function ChatView(p: Props) {
   const [files, setFiles] = useState<Pending[]>([]);
   const [uploading, setUploading] = useState(false);
   const [modeOpen, setModeOpen] = useState(false);
+  useEffect(() => {
+    if (!modeOpen) return;
+    const inside = (t: EventTarget | null) => !!(t as Element | null)?.closest?.('.menu-pop, [role="menu"], [role="dialog"], [class*="pop"], [class*="dropdown"]');
+    const away = (e: MouseEvent) => { if (!inside(e.target)) setModeOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setModeOpen(false); };
+    const t = setTimeout(() => document.addEventListener("click", away), 0);
+    document.addEventListener("keydown", esc);
+    return () => { clearTimeout(t); document.removeEventListener("click", away); document.removeEventListener("keydown", esc); };
+  }, [modeOpen]);
   const [drag, setDrag] = useState(false);
   const [line, setLine] = useState("");
   const [switched, setSwitched] = useState<Switched | null>(null);
@@ -244,11 +272,6 @@ export default function ChatView(p: Props) {
   const submit = useCallback(async (raw?: string) => {
     const text = (raw ?? input).trim();
     if ((!text && !files.length) || busy || uploading) return;
-    if (!p.modelConfig.apiKey && p.modelConfig.provider !== "custom") {
-      p.toast("Add an API key to start. Gemini has a free tier.");
-      p.openSettings("models");
-      return;
-    }
 
     let attachments: { name: string; contentType: string; url: string }[] = [];
     let extra = "";
@@ -512,7 +535,7 @@ export default function ChatView(p: Props) {
   const firstName = (p.user.name ?? p.user.email.split("@")[0]).split(" ")[0];
   const hour = new Date().getHours();
   const hello = hour < 5 ? "Up late" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const noKey = !p.modelConfig.apiKey && p.modelConfig.provider !== "custom";
+  const noKey = false;
   const lectureSecs = lecture ? Math.floor((Date.now() - lecture.started) / 1000) : 0;
 
   return (
@@ -531,7 +554,7 @@ export default function ChatView(p: Props) {
       <header className="topbar">
         <button className="icon-btn menu" onClick={p.onMenu} aria-label="Open sidebar"><Icon name="menu" /></button>
         <span className="title">{p.title}</span>
-        <span className="mode-badge"><span>{p.mode.icon}</span>{p.mode.name}</span>
+        <span className="mode-badge"><span><ModeIcon icon={p.mode.icon} /></span>{p.mode.name}</span>
         {examDay && <span className="exam-badge"><Timer size={12} strokeWidth={2} /> Exam day</span>}
         {isStudy && dueCount > 0 && (
           <button className="due-pill" onClick={() => setReviewOpen(true)} title="Review due flashcards">
@@ -585,7 +608,7 @@ export default function ChatView(p: Props) {
                 ch === " " ? <span key={i} className="key gap" /> : <span key={i} className={`key ${i > 3 ? "lime" : ""}`} style={{ animationDelay: `${i * 55}ms` }}>{ch}</span>
               )}
             </div>
-            <h1 className="hello">{hello}, <span>{firstName}</span>.</h1>
+            <h1 className="hello"><Greeting name={firstName} fallback={hello} /></h1>
             <p className="hello-line">{line}</p>
             {noKey && (
               <button className="key-cta" onClick={() => p.openSettings("models")}>
@@ -609,6 +632,7 @@ export default function ChatView(p: Props) {
                 <button key={t} className="sug" onClick={() => submit(t)}><b>{t}</b><span>{d}</span></button>
               ))}
             </div>
+            {p.mode.id === "default" && <BuddyHome onSend={(t) => submit(t)} />}
           </div>
         ) : (
           <div className="thread">
@@ -744,26 +768,26 @@ export default function ChatView(p: Props) {
 
             <div className="picker">
               <button type="button" className="pill" onClick={() => setModeOpen((o) => !o)} aria-haspopup="menu" aria-expanded={modeOpen}>
-                <span>{p.mode.icon}</span>{p.mode.name}<Icon name="chevron" size={12} />
+                <span><ModeIcon icon={p.mode.icon} /></span>{p.mode.name}<Icon name="chevron" size={12} />
               </button>
               {modeOpen && (
-                <div className="menu-pop" role="menu" onMouseLeave={() => setModeOpen(false)}>
+                <Floating className="menu-pop" role="menu">
                   {p.modes.map((m) => (
                     <button key={m.id} type="button" role="menuitem" className={m.id === p.mode.id ? "on" : ""} onClick={(e) => { setModeOpen(false); if (m.id === p.mode.id) return; playModeSwitch(m, () => p.onModeChange(m.id), e); }}>
-                      <span className="mi" style={{ background: m.accent, color: onAccent(m.accent) }}>{m.icon}</span>
+                      <span className="mi" style={{ background: m.accent, color: onAccent(m.accent) }}><ModeIcon icon={m.icon} /></span>
                       <span><b>{m.name}</b><small>{m.tagline ?? `${m.theme} theme`}</small></span>
                     </button>
                   ))}
                   <button type="button" className="add" onClick={() => { p.openSettings("modes"); setModeOpen(false); }}>
                     <Icon name="plus" size={14} /> Create a mode
                   </button>
-                </div>
+                </Floating>
               )}
             </div>
 
-            <button type="button" className="pill ghost-pill" onClick={() => p.openSettings("models")} title="Change model">
-              {modelLabel(p.modelConfig)}{noKey && <span className="warn-dot" />}
-            </button>
+            <ArtifactPanel />
+            <ModelPicker value={modelId} onChange={setModelId} byok={ownKey} />
+            <Reminders buddy={p.mode.id === "default"} />
             {connectors.length > 0 && (
               <button type="button" className="pill ghost-pill" onClick={() => p.openSettings("connectors")} title="Connectors">
                 <Icon name="plug" size={13} />{connectors.length}
@@ -786,7 +810,7 @@ export default function ChatView(p: Props) {
       {compareOpen && (
         <Compare
           chatId={p.id} history={messages} modeId={p.mode.id} code={codeMode}
-          modelConfig={p.modelConfig} webSearch={webOn}
+          modelConfig={modelCfg} webSearch={webOn}
           onClose={() => setCompareOpen(false)} onKeep={keepCompare} toast={p.toast}
         />
       )}

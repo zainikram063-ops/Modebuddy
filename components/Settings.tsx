@@ -9,6 +9,7 @@ import type { Connector } from "@/lib/types";
 import { VERSION } from "@/lib/version";
 import { Icon } from "./Icons";
 import type { AppUser } from "./Workspace";
+import ModeIcon from "@/components/ModeIcon";
 
 export type SettingsTab = "models" | "modes" | "memory" | "connectors" | "about";
 type Update = (p: Partial<LocalSettings> | ((s: LocalSettings) => Partial<LocalSettings>)) => void;
@@ -212,7 +213,7 @@ function ModesTab({ modes, reloadModes, toast }: Props) {
         <div className="mode-list">
           {modes.map((m) => (
             <button key={m.id} className={`mode-item ${sel === m.id ? "on" : ""}`} onClick={() => setSel(m.id)}>
-              <span className="mi" style={{ background: m.accent, color: onAccent(m.accent) }}>{m.icon}</span>
+              <span className="mi" style={{ background: m.accent, color: onAccent(m.accent) }}><ModeIcon icon={m.icon} /></span>
               <span><b>{m.name}</b><small>{m.builtin ? "built-in" : "custom"} · {m.theme}</small></span>
             </button>
           ))}
@@ -258,7 +259,7 @@ function ModesTab({ modes, reloadModes, toast }: Props) {
           {shown && (
             <div className="mini" data-theme={shown.theme} style={{ "--accent": shown.accent, "--on-accent": onAccent(shown.accent) } as CSSProperties}>
               <div className="mini-bubble">quiz me</div>
-              <div className="mini-text">{shown.icon} {shown.name || "Your mode"}<small>Preview of chats in this mode.</small></div>
+              <div className="mini-text"><ModeIcon icon={shown.icon} /> {shown.name || "Your mode"}<small>Preview of chats in this mode.</small></div>
             </div>
           )}
 

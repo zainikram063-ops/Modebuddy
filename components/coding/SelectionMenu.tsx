@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Bug, Feather, Gauge, Lightbulb, Sparkles, Type } from "lucide-react";
 import { setSender } from "@/lib/chat-bus";
+import ModeIcon from "@/components/ModeIcon";
 
 type Sel = { text: string; lang: string; code: boolean; x: number; top: number; bottom: number };
 type Action = { label: string; icon: JSX.Element; make: (s: Sel) => string; show?: (s: Sel) => boolean };
@@ -114,7 +115,7 @@ export default function SelectionMenu({ onSend }: { onSend: (text: string) => vo
     >
       {actions.map((a) => (
         <button key={a.label} type="button" onClick={() => pick(a)}>
-          {a.icon}{a.label}
+          <ModeIcon icon={a.icon} />{a.label}
         </button>
       ))}
     </div>,

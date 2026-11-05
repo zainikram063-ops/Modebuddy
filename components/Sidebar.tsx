@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Icon } from "./Icons";
 import { VERSION } from "@/lib/version";
 import type { Mode } from "@/lib/modes";
@@ -39,6 +39,15 @@ export default function Sidebar(p: Props) {
   const [draft, setDraft] = useState("");
   const [confirm, setConfirm] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
+  useEffect(() => {
+    if (!menu) return;
+    const inside = (t: EventTarget | null) => !!(t as Element | null)?.closest?.('.menu-pop, [role="menu"], [role="dialog"], [class*="pop"], [class*="dropdown"]');
+    const away = (e: MouseEvent) => { if (!inside(e.target)) setMenu(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(false); };
+    const t = setTimeout(() => document.addEventListener("click", away), 0);
+    document.addEventListener("keydown", esc);
+    return () => { clearTimeout(t); document.removeEventListener("click", away); document.removeEventListener("keydown", esc); };
+  }, [menu]);
 
   const groups = useMemo(() => group(p.convos.filter((c) => c.title.toLowerCase().includes(q.toLowerCase()))), [p.convos, q]);
   const iconFor = (id: string) => p.modes.find((m) => m.id === id)?.icon ?? "⌥";
@@ -49,7 +58,7 @@ export default function Sidebar(p: Props) {
   return (
     <aside className="side">
       <div className="side-top">
-        <div className="brand"><span className="brand-key">⌥</span><span>modebuddy</span></div>
+        <div className="brand"><span className="brand-key"><img src="/logos/buddy.png" alt="ModeBuddy" className="brand-logo" /></span><span>modebuddy</span></div>
         <span className="ver">{VERSION.family} {VERSION.number}</span>
       </div>
 
@@ -96,7 +105,7 @@ export default function Sidebar(p: Props) {
 
       <div className="side-foot">
         {menu && (
-          <div className="user-menu" onMouseLeave={() => setMenu(false)}>
+          <div className="user-menu">
             <button onClick={() => { p.openSettings("models"); setMenu(false); }}><Icon name="key" /> Models & keys</button>
             <button onClick={() => { p.openSettings("modes"); setMenu(false); }}><Icon name="layers" /> Modes & knowledge</button>
             <button onClick={() => { p.openSettings("memory"); setMenu(false); }}><Icon name="brain" /> Memory</button>

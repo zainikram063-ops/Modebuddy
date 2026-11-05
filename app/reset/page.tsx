@@ -22,7 +22,7 @@ export default function ResetPage() {
   return (
     <div className="login">
       <div className="login-card">
-        <div className="lc-brand"><span className="brand-key">⌥</span>modebuddy</div>
+        <div className="lc-brand"><span className="brand-key"><img src="/logos/buddy.png" alt="ModeBuddy" className="brand-logo" /></span>modebuddy</div>
         <h1>New password</h1>
         <p className="lc-sub">Make it a good one.</p>
         <form className="lc-form" onSubmit={submit} style={{ marginTop: 20 }}>

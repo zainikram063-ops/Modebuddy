@@ -14,6 +14,8 @@ import Plan, { type PlanData } from "./study/Plan";
 import Mermaid from "./study/Mermaid";
 import { DebugText } from "./coding/DebugCard";
 import { downloadZip, filesFromMarkdown } from "@/lib/files";
+import Sources from "./Sources";
+import ModeIcon from "@/components/ModeIcon";
 
 type Part = NonNullable<Message["parts"]>[number];
 type ToolInv = { state: "partial-call" | "call" | "result"; toolCallId: string; toolName: string; args?: unknown; result?: unknown };
@@ -181,9 +183,9 @@ const PRACTICE_META: Record<string, { icon: JSX.Element; loading: string }> = {
 
 function PracticeCard({ inv, onSend }: { inv: ToolInv; onSend?: (t: string) => void }) {
   const meta = PRACTICE_META[inv.toolName];
-  if (inv.state !== "result") return <div className="web-card searching">{meta.icon} {meta.loading}…</div>;
+  if (inv.state !== "result") return <div className="web-card searching"><ModeIcon icon={meta.icon} /> {meta.loading}…</div>;
   const r = inv.result as { ok?: boolean; error?: string };
-  if (!r?.ok) return <div className="web-card err">{meta.icon} Couldn&apos;t create it{r?.error ? ` · ${r.error}` : ""}</div>;
+  if (!r?.ok) return <div className="web-card err"><ModeIcon icon={meta.icon} /> Couldn&apos;t create it{r?.error ? ` · ${r.error}` : ""}</div>;
   if (inv.toolName === "create_quiz") return <Quiz id={inv.toolCallId} data={r as QuizData} onSend={onSend} />;
   if (inv.toolName === "create_flashcards") return <Flashcards data={r as DeckData} />;
   if (inv.toolName === "create_plan") return <Plan data={r as PlanData} />;
@@ -194,7 +196,7 @@ function ToolCard({ inv, cites, onSend }: { inv: ToolInv; cites: Map<string, str
   const [open, setOpen] = useState(false);
   const done = inv.state === "result";
 
-  if (inv.toolName === "web_search") return <WebCard inv={inv} cites={cites} />;
+  if (inv.toolName === "web_search") return inv.state === "result" && (inv.result as { ok?: boolean })?.ok ? null : <WebCard inv={inv} cites={cites} />;
   if (PRACTICE_META[inv.toolName]) return <PracticeCard inv={inv} onSend={onSend} />;
   if (inv.toolName === "suggest_mode") {
     const r = inv.result as { ok?: boolean; name?: string } | undefined;
@@ -309,6 +311,7 @@ function MessageItem({ m, isLast, busy, onEdit, onRegenerate, onSend }: Props) {
             default: return null;
           }
         })}
+        <Sources parts={parts} cites={cites} />
         {!(busy && isLast) && textAll && (
           <div className="msg-actions">
             <button onClick={copy} title="Copy">{copied ? <Icon name="check" size={14} /> : <Icon name="copy" size={14} />}</button>

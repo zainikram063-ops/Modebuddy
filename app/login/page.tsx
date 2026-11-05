@@ -106,7 +106,7 @@ function LoginInner() {
       ))}
 
       <div className="login-card">
-        <div className="lc-brand"><span className="brand-key">⌥</span>modebuddy<span className="lc-ver">{VERSION.family} {VERSION.number}</span></div>
+        <div className="lc-brand"><span className="brand-key"><img src="/logos/buddy.png" alt="ModeBuddy" className="brand-logo" /></span>modebuddy<span className="lc-ver">{VERSION.family} {VERSION.number}</span></div>
         <h1>{view === "signup" ? "Create your account" : view === "reset" ? "Reset password" : "Welcome back"}</h1>
         <p className="lc-sub"><span key={word} className="word">{WORDS[word]}</span></p>
 

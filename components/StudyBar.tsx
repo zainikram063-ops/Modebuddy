@@ -6,6 +6,7 @@ import {
   Mic, Puzzle, ScrollText, SearchCheck, Table2, Timer,
 } from "lucide-react";
 import { STUDY_LEVELS, type StudySettings } from "@/lib/study";
+import ModeIcon from "@/components/ModeIcon";
 
 export type StudyToolAction = { text: string; prefill: string; prefillOnly?: boolean };
 type Props = {
@@ -95,7 +96,7 @@ export default function StudyBar({ value, onChange, onTool, onMaterial, onLectur
             <small>Practice</small>
             {PRACTICE.map((t) => (
               <button key={t.label} type="button" role="menuitem" onClick={() => run(t.action)}>
-                {t.icon}<span><b>{t.label}</b><em>{t.sub}</em></span>
+                <ModeIcon icon={t.icon} /><span><b>{t.label}</b><em>{t.sub}</em></span>
               </button>
             ))}
 
@@ -111,7 +112,7 @@ export default function StudyBar({ value, onChange, onTool, onMaterial, onLectur
             {SUMMARIES.map((s) => (
               <button key={s.label} type="button" role="menuitem"
                       onClick={() => run({ text: `Summarize as ${s.kind}.`, prefill: `Summarize this as ${s.kind}:\n` })}>
-                {s.icon}<span><b>{s.label}</b></span>
+                <ModeIcon icon={s.icon} /><span><b>{s.label}</b></span>
               </button>
             ))}
 

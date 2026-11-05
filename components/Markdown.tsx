@@ -9,9 +9,11 @@ import rehypeHighlight from "rehype-highlight";
 import "katex/dist/katex.min.css";
 import "katex/contrib/mhchem";
 import { Check, ChevronDown, Copy, Download, Eye, FileCode2, FlaskConical, Play, Square, X } from "lucide-react";
-import { useArtifact } from "./Artifacts";
+import { useArtifact } from "./ArtifactsLegacy";
 import { downloadZip, pathFrom } from "@/lib/files";
 import { sendToChat, useCanSend } from "@/lib/chat-bus";
+import BuddyBlock, { BUDDY_BLOCKS } from "./BuddyBlocks";
+import { ArtifactCard, isArtifact } from "./Artifacts";
 import ApplyButton from "./coding/ApplyButton";
 import type { RunHandle, RunOut } from "@/lib/runner";
 
@@ -360,6 +362,8 @@ function Pre({ node, children }: { node?: unknown; children?: ReactNode }) {
   const code = codeEl(node as HNode | undefined);
   const lang = langOf(code);
   const raw = rawOf(code);
+  if (isArtifact(lang, raw)) return <ArtifactCard lang={lang} raw={raw} />;
+  if (BUDDY_BLOCKS.has(lang)) return <BuddyBlock lang={lang} raw={raw} />;
   if (lang === "diff" || lang === "patch") return <Diff raw={raw} />;
   return <CodeBlock lang={lang} raw={raw} path={pathFrom(code?.data?.meta, raw)}>{children}</CodeBlock>;
 }
@@ -370,9 +374,9 @@ const components: Components = {
     const n = node as unknown as HNode | undefined;
     return n?.properties?.dataFiletabs ? <FileTabs node={n}>{children}</FileTabs> : <div {...props}>{children}</div>;
   },
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line
   a: ({ node, ...p }) => <a {...p} target="_blank" rel="noreferrer" />,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars, @next/next/no-img-element
+  // eslint-disable-next-line @next/next/no-img-element
   img: ({ node, ...p }) => <img {...p} alt={p.alt ?? ""} loading="lazy" />,
 };
 

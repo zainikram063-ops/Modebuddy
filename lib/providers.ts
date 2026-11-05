@@ -1,8 +1,10 @@
+import { platformConfig, withFallback } from "./platform";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import type { ModelConfig } from "./providers-meta";
 import { assertPublicUrl } from "./net";
+import { isPublicUrl } from "@/lib/safe-url";
 
 // Gemini 3.x needs a thought signature on every tool call. AI SDK 4 drops them,
 // so this fills in Google's documented placeholder before each request.
@@ -22,10 +24,12 @@ const geminiFetch: typeof fetch = async (url, init) => {
 };
 
 export function createModel(c: ModelConfig) {
+  if (!c.apiKey?.trim() && c.provider !== "custom") Object.assign(c, platformConfig(c));
+  if (c.provider === "custom" && process.env.NODE_ENV === "production" && !isPublicUrl((c as { baseURL?: string }).baseURL)) throw new Error("Custom model URL must be a public https:// address.");
   const apiKey = c.apiKey?.trim();
   if (!c.model) throw new Error("Pick a model in Settings → Models.");
   switch (c.provider) {
-    case "google": return createGoogleGenerativeAI({ apiKey, fetch: geminiFetch })(c.model);
+    case "google": return createGoogleGenerativeAI({ apiKey, fetch: withFallback(geminiFetch) })(c.model);
     case "openai": return createOpenAI({ apiKey }).chat(c.model);
     case "anthropic": return createAnthropic({ apiKey })(c.model);
     case "openrouter":

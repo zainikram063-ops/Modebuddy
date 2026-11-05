@@ -10,7 +10,8 @@ import { PROVIDERS, type ModelConfig } from "@/lib/providers-meta";
 import Sidebar, { type ConvoRow } from "./Sidebar";
 import ChatView from "./ChatView";
 import Settings, { type SettingsTab } from "./Settings";
-import { ArtifactPanel, ArtifactProvider } from "./Artifacts";
+import { ArtifactPanel } from "./Artifacts";
+import { ArtifactProvider } from "./ArtifactsLegacy";
 
 export type AppUser = { id: string; email: string; name: string | null; avatar: string | null };
 type Active = { id: string; initial: Message[] | null };
@@ -129,7 +130,7 @@ export default function Workspace({ user }: { user: AppUser }) {
     return () => removeEventListener("keydown", h);
   }, [newChat]);
 
-  if (!ready) return <div className="splash"><span className="brand-key big">⌥</span></div>;
+  if (!ready) return <div className="splash"><span className="brand-key big"><img src="/logos/buddy.png" alt="ModeBuddy" className="brand-logo" /></span></div>;
 
   return (
     <ArtifactProvider>
