@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import type { Metadata } from "next";
 import SharedChat, { type ShareData } from "@/components/SharedChat";
@@ -28,7 +29,7 @@ export default async function SharePage({ params }: { params: Promise<{ id: stri
         <div className="share-inner">
           <h1 className="share-title">This link doesn&apos;t work anymore</h1>
           <p className="share-sub">The chat was unshared, or the link is wrong.</p>
-          <a className="share-cta" href="/">Open ModeBuddy →</a>
+          <Link className="share-cta" href="/">Open ModeBuddy →</Link>
         </div>
       </main>
     );

@@ -1,6 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
+import Link from "next/link";
 import type { CSSProperties } from "react";
 import { Globe } from "lucide-react";
 import Markdown from "./Markdown";
@@ -75,7 +76,7 @@ export default function SharedChat({ s }: { s: ShareData }) {
         </div>
 
         <footer className="share-foot">
-          <a className="share-cta" href="/">Made with ModeBuddy · Start your own chat →</a>
+          <Link className="share-cta" href="/">Made with ModeBuddy · Start your own chat →</Link>
         </footer>
       </div>
     </main>
