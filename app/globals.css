@@ -1874,3 +1874,13 @@ body.art-open { transition: margin-right .2s; }
   html.side-anim .thread,
   html.side-anim .composer { will-change: transform; }
 }
+
+/* ===== Performance fixes (older Macs) ===== */
+.chat::before { filter: none !important; }
+@media (min-width: 901px) {
+  html body .app.side-closed .side { width: 272px !important; min-width: 272px !important; }
+  html.side-anim .chat::before { animation-play-state: paused; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat::before, .hello span { animation: none !important; }
+}
