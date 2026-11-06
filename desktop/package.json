@@ -1,7 +1,7 @@
 {
   "name": "modebuddy-desktop",
   "productName": "ModeBuddy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ModeBuddy for Mac",
   "private": true,
   "main": "main.js",
@@ -15,7 +15,8 @@
     "files": [
       "main.js",
       "preload.js",
-      "config.json"
+      "config.json",
+      "node_modules/**/*"
     ],
     "protocols": [
       {
@@ -32,10 +33,17 @@
         "NSMicrophoneUsageDescription": "ModeBuddy listens while you hold Command and Option in Live mode.",
         "NSAppleEventsUsageDescription": "ModeBuddy checks which website you are on to pick the right mode."
       }
-    }
+    },
+    "asarUnpack": [
+      "node_modules/uiohook-napi/**"
+    ],
+    "npmRebuild": false
   },
   "devDependencies": {
     "electron": "^45.2.3",
     "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "uiohook-napi": "^1.5.5"
   }
 }
