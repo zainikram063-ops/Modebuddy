@@ -1884,3 +1884,10 @@ body.art-open { transition: margin-right .2s; }
 @media (prefers-reduced-motion: reduce) {
   .chat::before, .hello span { animation: none !important; }
 }
+
+/* ===== Sidebar glide (desktop) ===== */
+@media (min-width: 901px) {
+  html .app, html .app.side-closed { transition: none !important; }
+  html.side-flipping .app .side { position: relative; z-index: 5; }
+  html.side-flipping .app .main { overflow: clip; }
+}

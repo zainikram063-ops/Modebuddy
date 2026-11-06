@@ -1,3 +1,4 @@
+import SideFlip from "../components/SideFlip";
 import type { Metadata, Viewport } from "next";
 import { Archivo, JetBrains_Mono, Fraunces } from "next/font/google";
 import "highlight.js/styles/github-dark.css";
@@ -16,7 +17,8 @@ export const viewport: Viewport = { themeColor: "#0a0a0a" };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-theme="light" className={`${display.variable} ${mono.variable} ${serif.variable}`} suppressHydrationWarning>
-      <body>{children}</body>
+      <body>{children}
+        <SideFlip /></body>
     </html>
   );
 }
