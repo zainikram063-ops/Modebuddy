@@ -1,0 +1,26 @@
+{
+  "name": "modebuddy-desktop",
+  "productName": "ModeBuddy",
+  "version": "0.1.0",
+  "description": "ModeBuddy for Mac",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac dir"
+  },
+  "build": {
+    "appId": "app.modebuddy.desktop",
+    "productName": "ModeBuddy",
+    "files": ["main.js", "preload.js", "config.json"],
+    "protocols": [{ "name": "ModeBuddy", "schemes": ["modebuddy"] }],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "ModeBuddy listens while you hold Command and Option in Live mode.",
+        "NSAppleEventsUsageDescription": "ModeBuddy checks which website you are on to pick the right mode."
+      }
+    }
+  }
+}
