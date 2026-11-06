@@ -12,8 +12,19 @@
   "build": {
     "appId": "app.modebuddy.desktop",
     "productName": "ModeBuddy",
-    "files": ["main.js", "preload.js", "config.json"],
-    "protocols": [{ "name": "ModeBuddy", "schemes": ["modebuddy"] }],
+    "files": [
+      "main.js",
+      "preload.js",
+      "config.json"
+    ],
+    "protocols": [
+      {
+        "name": "ModeBuddy",
+        "schemes": [
+          "modebuddy"
+        ]
+      }
+    ],
     "mac": {
       "category": "public.app-category.productivity",
       "identity": null,
@@ -22,5 +33,9 @@
         "NSAppleEventsUsageDescription": "ModeBuddy checks which website you are on to pick the right mode."
       }
     }
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
   }
 }

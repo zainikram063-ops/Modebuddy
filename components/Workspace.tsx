@@ -19,6 +19,14 @@ type Active = { id: string; initial: Message[] | null };
 
 const newId = () => (typeof window === "undefined" ? "ssr" : crypto.randomUUID());
 
+let mbSideTimer: ReturnType<typeof setTimeout> | undefined;
+function mbSideAnim() {
+  const root = document.documentElement;
+  root.classList.add("side-anim");
+  clearTimeout(mbSideTimer);
+  mbSideTimer = setTimeout(() => root.classList.remove("side-anim"), 420);
+}
+
 export default function Workspace({ user }: { user: AppUser }) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -33,7 +41,7 @@ export default function Workspace({ user }: { user: AppUser }) {
   const [sideOpen, setSideOpen] = useState(false);
   const [sideClosed, setSideClosed] = useState(false);
   useEffect(() => { setSideClosed(localStorage.getItem("mb-side-closed") === "1"); }, []);
-  const toggleSide = () => setSideClosed((c) => { localStorage.setItem("mb-side-closed", c ? "0" : "1"); return !c; });
+  const toggleSide = () => { mbSideAnim(); setSideClosed((c) => { localStorage.setItem("mb-side-closed", c ? "0" : "1"); return !c; }); };
 
   const modes = useMemo(() => [...BUILTIN_MODES, ...customModes.map((m) => ({ ...m, builtin: false }))], [customModes]);
   const activeConvo = convos.find((c) => c.id === active.id);

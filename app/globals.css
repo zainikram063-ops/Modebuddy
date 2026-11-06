@@ -1852,3 +1852,25 @@ body.art-open { transition: margin-right .2s; }
 .legal a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .legal-date { color: var(--ink-3); font-size: 13.5px; margin: 0 0 22px; }
 .legal-back { margin-top: 36px; }
+
+/* ===== Smooth sidebar (desktop) ===== */
+@media (min-width: 901px) {
+  html .app .side {
+    box-sizing: border-box;
+    width: 272px !important;
+    min-width: 272px !important;
+    transition: transform .28s cubic-bezier(.2, .8, .2, 1), visibility 0s;
+  }
+  html .app.side-closed .side {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    border-right-width: 1px !important;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform .28s cubic-bezier(.2, .8, .2, 1), visibility 0s linear .28s;
+  }
+  html .side-toggle { transition: transform .28s cubic-bezier(.2, .8, .2, 1), opacity .2s, width .15s; }
+  html .app.side-closed .side-toggle { left: 272px; transform: translateX(-272px); }
+  html.side-anim .thread,
+  html.side-anim .composer { will-change: transform; }
+}
