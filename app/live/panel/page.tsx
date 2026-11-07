@@ -9,12 +9,11 @@ import { LIVE_MODES, liveMode, type LiveMode } from "../../../lib/liveModes";
 type View = "idle" | "listening" | "thinking" | "answer" | "error";
 type Rec = { stream: MediaStream; ctx: AudioContext; node: ScriptProcessorNode; chunks: Float32Array[]; t0: number };
 type Turn = { q: string; a: string };
-type IconName = "code" | "study" | "buddy" | "insert" | "copy" | "check" | "speaker" | "close" | "retry" | "alert";
+type IconName = "insert" | "copy" | "check" | "speaker" | "stop" | "close" | "retry";
 
 const RATE = 16000;
-const CARD_W = 560;
-const RING = 880;
-const BAR_K = [0.45, 0.7, 0.95, 1.15, 1.3, 1.15, 0.95, 0.7, 0.45];
+const CARD_W = 520;
+const BARS = 24;
 
 function wav(chunks: Float32Array[]) {
   const n = chunks.reduce((s, c) => s + c.length, 0);
@@ -67,18 +66,15 @@ const pasteable = (md: string) => ((md.match(/```[^\n]*\n([\s\S]*?)```/) || [])[
 const plain = (md: string) => md.replace(/```[\s\S]*?```/g, " ").replace(/[#*_`>|]/g, " ").replace(/\s+/g, " ").trim();
 
 function Icon({ name }: { name: IconName }) {
-  const p = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  const p = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
   switch (name) {
-    case "code": return <svg viewBox="0 0 24 24" {...p}><path d="M8.5 7 3.5 12l5 5M15.5 7l5 5-5 5" /></svg>;
-    case "study": return <svg viewBox="0 0 24 24" {...p}><path d="M3 5.5c2.7-1.4 5.7-1.4 9 .6 3.3-2 6.3-2 9-.6V19c-2.7-1.4-5.7-1.4-9 .6-3.3-2-6.3-2-9-.6z" /><path d="M12 6.1v13.5" /></svg>;
-    case "buddy": return <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.8l1.9 5.6 5.6 1.9-5.6 1.9L12 17.8l-1.9-5.6-5.6-1.9 5.6-1.9z" /><circle cx="19" cy="18" r="1.6" /><circle cx="5.5" cy="18.5" r="1.1" /></svg>;
-    case "insert": return <svg viewBox="0 0 24 24" {...p}><path d="M12 4v10m0 0-4-4m4 4 4-4M5 19h14" /></svg>;
-    case "copy": return <svg viewBox="0 0 24 24" {...p}><rect x="9" y="9" width="11" height="11" rx="2.5" /><path d="M15 9V6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15H9" /></svg>;
-    case "check": return <svg viewBox="0 0 24 24" {...p}><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>;
-    case "speaker": return <svg viewBox="0 0 24 24" {...p}><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" /><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" /></svg>;
-    case "close": return <svg viewBox="0 0 24 24" {...p} strokeWidth={2.6}><path d="M6 6l12 12M18 6 6 18" /></svg>;
-    case "retry": return <svg viewBox="0 0 24 24" {...p}><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4.5v4h4" /></svg>;
-    default: return <svg viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5.5M12 16.5v.01" /></svg>;
+    case "insert": return <svg {...p}><path d="M12 4v11" /><path d="m7.5 10.5 4.5 4.5 4.5-4.5" /><path d="M5 20h14" /></svg>;
+    case "copy": return <svg {...p}><rect x="8.5" y="8.5" width="11" height="11" rx="2" /><path d="M15.5 8.5V6A1.5 1.5 0 0 0 14 4.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5" /></svg>;
+    case "check": return <svg {...p}><path d="m5 12.5 4.5 4.5 9.5-10" /></svg>;
+    case "speaker": return <svg {...p}><path d="M5 9.5v5h3l4.5 4v-13l-4.5 4z" /><path d="M16 9.5a3.5 3.5 0 0 1 0 5" /></svg>;
+    case "stop": return <svg {...p}><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>;
+    case "retry": return <svg {...p}><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" /><path d="M4.5 4.5v3.8h3.8" /></svg>;
+    default: return <svg {...p}><path d="M7 7l10 10M17 7 7 17" /></svg>;
   }
 }
 
@@ -91,21 +87,23 @@ export default function LivePanel() {
   const [copied, setCopied] = useState(false);
   const [follow, setFollow] = useState(false);
   const [mode, setMode] = useState<LiveMode>(LIVE_MODES.buddy);
-  const [cardH, setCardH] = useState(150);
+  const [cardH, setCardH] = useState(140);
   const [leaving, setLeaving] = useState(false);
   const viewRef = useRef<View>("idle");
   const rec = useRef<Rec | null>(null);
   const starting = useRef<Promise<void> | null>(null);
   const lvl = useRef(0);
   const smooth = useRef(0);
+  const hist = useRef<number[]>([]);
+  const lastPush = useRef(0);
   const raf = useRef(0);
   const abort = useRef<AbortController | null>(null);
   const turns = useRef<Turn[]>([]);
   const last = useRef<Turn | null>(null);
   const lastAsk = useRef<{ audio: string; image: string | null } | null>(null);
   const leaveTimer = useRef(0);
-  const stageRef = useRef<HTMLDivElement | null>(null);
-  const barsRef = useRef<HTMLSpanElement | null>(null);
+  const waveRef = useRef<HTMLSpanElement | null>(null);
+  const timeRef = useRef<HTMLSpanElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const handler = useRef<(e: LiveEvent) => void>(() => {});
 
@@ -129,15 +127,29 @@ export default function LivePanel() {
     src.connect(node);
     node.connect(ctx.destination);
     rec.current = { stream, ctx, node, chunks, t0: performance.now() };
-    // Drive the orb + soundwave straight on the page (no React re-render each frame)
-    const tick = () => {
-      smooth.current += (lvl.current - smooth.current) * 0.35;
-      const s = smooth.current;
-      stageRef.current?.style.setProperty("--lvl", s.toFixed(3));
-      const bars = barsRef.current?.children;
-      if (bars) for (let i = 0; i < bars.length; i++) {
-        const v = 0.18 + Math.min(0.82, s * BAR_K[i] * (0.75 + Math.random() * 0.5));
-        (bars[i] as HTMLElement).style.transform = `scaleY(${v.toFixed(3)})`;
+    hist.current = [];
+    smooth.current = 0;
+    lastPush.current = 0;
+    // Scrolling soundwave + timer, updated directly on the page (no React re-render each frame)
+    const tick = (now: number) => {
+      smooth.current += (lvl.current - smooth.current) * 0.4;
+      if (now - lastPush.current > 70) {
+        lastPush.current = now;
+        hist.current.push(smooth.current);
+        if (hist.current.length > BARS) hist.current.shift();
+        const bars = waveRef.current?.children;
+        if (bars) {
+          const off = BARS - hist.current.length;
+          for (let i = 0; i < bars.length; i++) {
+            const v = i < off ? 0 : hist.current[i - off];
+            (bars[i] as HTMLElement).style.transform = `scaleY(${(0.12 + Math.min(0.88, v * 1.2)).toFixed(3)})`;
+          }
+        }
+        const r = rec.current;
+        if (r && timeRef.current) {
+          const s = Math.max(0, Math.floor((now - r.t0) / 1000));
+          timeRef.current.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+        }
       }
       raf.current = requestAnimationFrame(tick);
     };
@@ -148,7 +160,6 @@ export default function LivePanel() {
     try { await starting.current; } catch { /* mic failed */ }
     starting.current = null;
     cancelAnimationFrame(raf.current);
-    stageRef.current?.style.setProperty("--lvl", "0");
     const r = rec.current;
     rec.current = null;
     if (!r) return null;
@@ -161,7 +172,7 @@ export default function LivePanel() {
   function leave(then: () => void) {
     setLeaving(true);
     window.clearTimeout(leaveTimer.current);
-    leaveTimer.current = window.setTimeout(then, 260);
+    leaveTimer.current = window.setTimeout(then, 160);
   }
 
   function back() {
@@ -281,14 +292,13 @@ export default function LivePanel() {
   const p = parse(raw, done);
   const isCard = view === "answer" || view === "error";
 
-  // The island takes on the colours of the mode the AI picked
   useEffect(() => { if (p.mode) setMode(liveMode(p.mode)); }, [p.mode]);
 
   // Measure the card so the island can grow to fit it
   useLayoutEffect(() => {
     const el = cardRef.current;
     if (!isCard || !el) return;
-    const measure = () => setCardH(Math.min(600, Math.ceil(el.offsetHeight)));
+    const measure = () => setCardH(Math.min(560, Math.ceil(el.offsetHeight)));
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -304,88 +314,70 @@ export default function LivePanel() {
     if (t) { setSpeaking(true); L?.speak(t); }
   };
 
-  if (view === "idle") return <div className="lvx-stage" ref={stageRef} />;
+  if (view === "idle") return <div className="lv3-stage" />;
 
-  const [w, h] = isCard ? [CARD_W, cardH] : view === "thinking" ? [236, 52] : [300, 52];
-  const wrapStyle = {
-    "--w": `${w}px`,
-    "--h": `${h}px`,
-    "--r": "26px",
-    "--lv-a": view === "error" ? "#f87171" : mode.color,
-    "--lv-bg": mode.bg,
-  } as CSSProperties;
+  const [w, h] = isCard ? [CARD_W, cardH] : view === "thinking" ? [236, 40] : [268, 40];
+  const style = { "--w": `${w}px`, "--h": `${h}px`, "--lv-a": view === "error" ? "#ff6b6b" : mode.color } as CSSProperties;
 
   return (
-    <div className="lvx-stage" ref={stageRef}>
-      <div className="lvx-wrap" style={wrapStyle}>
-        <div className={`lvx-aura ${leaving ? "out" : ""}`} />
-        <div
-          className={`lvx-island ${leaving ? "out" : ""}`}
-          data-view={view}
-          data-mode={mode.id}
-          onMouseEnter={() => api()?.interactive(true)}
-          onMouseLeave={() => api()?.interactive(false)}
-        >
-          <i className="lvx-ring" style={{ width: RING, height: RING, marginLeft: -RING / 2, marginTop: -RING / 2 }} />
-          <i className="lvx-fill" />
-
-          {!isCard ? (
-            <div className="lvx-c" style={{ width: w }} key={view}>
-              <div className="lvx-pill">
-                {view === "listening" ? (
-                  <span className="lvx-orb"><i className="lvx-rip" /><i className="lvx-rip b" /><i className="lvx-core" /></span>
-                ) : (
-                  <span className="lvx-orb"><i className="lvx-spin" /><i className="lvx-core-s" /></span>
-                )}
-                <span className="lvx-label">
-                  <b>{view === "thinking" ? "Thinking" : follow ? "Follow-up" : "Listening"}</b>
-                  <em>{view === "thinking" ? "looking at your screen" : "let go to send"}</em>
-                </span>
-                {view === "listening" ? (
-                  <span className="lvx-bars" ref={barsRef}>{BAR_K.map((_, i) => <i key={i} />)}</span>
-                ) : (
-                  <span className="lvx-dots"><i /><i /><i /></span>
-                )}
-              </div>
+    <div className="lv3-stage">
+      <div
+        className={`lv3-island ${isCard ? "is-card" : ""} ${leaving ? "out" : ""}`}
+        style={style}
+        data-view={view}
+        onMouseEnter={() => api()?.interactive(true)}
+        onMouseLeave={() => api()?.interactive(false)}
+      >
+        {!isCard ? (
+          <div className="lv3-pill" key={view} style={{ width: w }}>
+            {view === "listening" ? (
+              <>
+                <span className="lv3-dot live" />
+                <span className="lv3-label">{follow ? "Follow-up" : "Listening"}</span>
+                <span className="lv3-wave" ref={waveRef}>{Array.from({ length: BARS }, (_, i) => <i key={i} />)}</span>
+                <span className="lv3-time" ref={timeRef}>0:00</span>
+              </>
+            ) : (
+              <>
+                <span className="lv3-spin" />
+                <span className="lv3-label">Thinking</span>
+                <span className="lv3-sub">Reading your screen</span>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="lv3-card" ref={cardRef} style={{ width: CARD_W }}>
+            <div className="lv3-head">
+              {view === "answer" && !done ? <span className="lv3-spin sm" /> : <span className="lv3-dot" />}
+              <span className="lv3-mode">{view === "error" ? "Error" : mode.name}</span>
+              {view === "answer" && p.heard && <span className="lv3-q">{p.heard}</span>}
+              <button className="lv3-close" onClick={() => leave(() => api()?.hide())} aria-label="Close"><Icon name="close" /></button>
             </div>
-          ) : (
-            <div className="lvx-c" style={{ width: CARD_W }}>
-              <div ref={cardRef} className={`lvx-card ${view === "answer" && !done ? "streaming" : ""}`}>
-                <div className="lvx-head">
-                  <span className="lvx-chip">
-                    {view === "error" ? <><Icon name="alert" /> Live</> : <>{mode.icon ? <span className="lvx-emoji">{mode.icon}</span> : <Icon name={mode.id} />} {mode.name}</>}
-                  </span>
-                  <span className="lvx-heard">{view === "error" ? "ModeBuddy Live" : p.heard ? `“${p.heard}”` : "…"}</span>
-                  <button className="lvx-x" onClick={() => leave(() => api()?.hide())} aria-label="Close"><Icon name="close" /></button>
-                </div>
-                <div className="lvx-body">
-                  {view === "error" ? (
-                    <p className="lvx-err">{err}</p>
-                  ) : p.answer ? (
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{p.answer}</ReactMarkdown>
-                  ) : (
-                    <p className="lvx-wait"><span className="lvx-dots"><i /><i /><i /></span> Writing your answer</p>
-                  )}
-                </div>
-                {view === "answer" && done ? (
-                  <div className="lvx-foot">
-                    <button className="lvx-btn primary" onClick={() => leave(() => api()?.insert(out()))}><Icon name="insert" /> Insert</button>
-                    <button className="lvx-btn" onClick={copy}>{copied ? <><Icon name="check" /> Copied</> : <><Icon name="copy" /> Copy</>}</button>
-                    <button className="lvx-btn" onClick={voice}>
-                      {speaking ? <><span className="lvx-eq"><i /><i /><i /></span> Stop</> : <><Icon name="speaker" /> Read aloud</>}
-                    </button>
-                    <span className="lvx-hint"><kbd>⌘⌥</kbd> follow up <kbd>esc</kbd></span>
-                  </div>
-                ) : view === "error" && lastAsk.current ? (
-                  <div className="lvx-foot">
-                    <button className="lvx-btn primary" onClick={retry}><Icon name="retry" /> Try again</button>
-                    <span className="lvx-hint"><kbd>esc</kbd> close</span>
-                  </div>
-                ) : null}
-              </div>
+            <div className="lv3-body">
+              {view === "error" ? (
+                <p className="lv3-err">{err}</p>
+              ) : p.answer ? (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{p.answer}</ReactMarkdown>
+              ) : (
+                <p className="lv3-muted">Writing…</p>
+              )}
             </div>
-          )}
-        </div>
+            {view === "answer" && done && (
+              <div className="lv3-foot">
+                <span className="lv3-hint">Hold ⌘⌥ to follow up</span>
+                <button className="lv3-btn" onClick={voice}><Icon name={speaking ? "stop" : "speaker"} />{speaking ? "Stop" : "Read aloud"}</button>
+                <button className="lv3-btn" onClick={copy}><Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy"}</button>
+                <button className="lv3-btn primary" onClick={() => leave(() => api()?.insert(out()))}><Icon name="insert" />Insert</button>
+              </div>
+            )}
+            {view === "error" && lastAsk.current && (
+              <div className="lv3-foot">
+                <span className="lv3-hint">Esc to close</span>
+                <button className="lv3-btn primary" onClick={retry}><Icon name="retry" />Try again</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
