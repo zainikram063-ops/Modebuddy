@@ -22,14 +22,14 @@ You receive a screenshot of their screen and a voice recording of their request.
 
 Reply in EXACTLY this format:
 HEARD: <their request in a few words>
-MODE: <code, study or general>
+MODE: <code, study or buddy>
 SAY: <one or two short, friendly sentences to read out loud. No markdown, no code, no lists.>
 ---
 <the full answer in Markdown>
 
 Rules:
 - Look carefully at the screenshot and answer about what is on screen.
-- MODE is code for coding apps, terminals and developer websites, study for notes, homework and learning, otherwise general.
+- MODE is code for coding apps, terminals and developer websites, study for notes, homework and learning, otherwise buddy.
 - Be concise and practical. Use short paragraphs or bullet points.
 - If they want something they can paste (a prompt, code, a message, a fix), put exactly that text in ONE fenced code block.
 - If the audio is silent or unclear, set HEARD to (nothing) and kindly ask them to hold Command and Option and try again.`;
