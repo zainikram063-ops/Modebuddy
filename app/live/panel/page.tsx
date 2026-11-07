@@ -31,6 +31,25 @@ function b64(b: Uint8Array) {
   return btoa(s);
 }
 
+// Make the screenshot smaller before sending: faster upload, faster answer
+function shrink(img64: string, max = 1440, q = 0.65): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, max / img.width);
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * s);
+      c.height = Math.round(img.height * s);
+      const g = c.getContext("2d");
+      if (!g) { reject(new Error("no canvas")); return; }
+      g.drawImage(img, 0, 0, c.width, c.height);
+      resolve(c.toDataURL("image/jpeg", q).split(",")[1] || img64);
+    };
+    img.onerror = () => reject(new Error("bad image"));
+    img.src = "data:image/jpeg;base64," + img64;
+  });
+}
+
 function parse(raw: string, final: boolean) {
   const cut = raw.search(/^-{3,}\s*$/m);
   const head = cut >= 0 ? raw.slice(0, cut) : raw;
@@ -68,6 +87,7 @@ export default function LivePanel() {
   const abort = useRef<AbortController | null>(null);
   const turns = useRef<Turn[]>([]);
   const last = useRef<Turn | null>(null);
+  const lastAsk = useRef<{ audio: string; image: string | null } | null>(null);
   const handler = useRef<(e: LiveEvent) => void>(() => {});
 
   const api = () => desktop()?.live;
@@ -116,19 +136,25 @@ export default function LivePanel() {
     abort.current?.abort();
     const ac = new AbortController();
     abort.current = ac;
+    lastAsk.current = { audio, image };
+    const timer = window.setTimeout(() => ac.abort("timeout"), 75000);
     setRaw("");
     setDone(false);
     try {
+      const pic = image ? await shrink(image).catch(() => image) : null;
       const res = await fetch("/api/live", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ audio, image, history: turns.current.slice(-4) }),
+        body: JSON.stringify({ audio, image: pic, history: turns.current.slice(-4) }),
         signal: ac.signal,
       });
       const type = res.headers.get("content-type") || "";
-      if (!res.ok || !res.body || type.includes("text/html")) {
-        const j = type.includes("json") ? await res.json().catch(() => null) : null;
-        throw new Error(j?.error || (type.includes("text/html") ? "Please sign in to ModeBuddy first." : "Something went wrong. Try again."));
+      if (type.includes("text/html")) throw new Error("Please sign in to ModeBuddy first.");
+      if (!res.ok || !res.body) {
+        const txt = await res.text().catch(() => "");
+        let msg = "";
+        try { msg = JSON.parse(txt).error || ""; } catch { /* not JSON */ }
+        throw new Error(msg || `Error ${res.status}: ${txt.replace(/\s+/g, " ").trim().slice(0, 140) || res.statusText || "no details"}`);
       }
       go("answer");
       const reader = res.body.getReader();
@@ -145,10 +171,21 @@ export default function LivePanel() {
       last.current = { q: p.heard || "(question)", a: p.answer || text };
       if (p.say) { setSpeaking(true); api()?.speak(p.say); }
     } catch (x) {
-      if (ac.signal.aborted) return;
-      setErr(x instanceof Error ? x.message : "Something went wrong. Try again.");
+      if (ac.signal.aborted && ac.signal.reason !== "timeout") return;
+      setErr(ac.signal.reason === "timeout" ? "ModeBuddy took too long to answer. Try again." : x instanceof Error ? x.message : "Something went wrong. Try again.");
       go("error");
+    } finally {
+      window.clearTimeout(timer);
     }
+  }
+
+  function retry() {
+    const a = lastAsk.current;
+    if (!a) return;
+    setErr("");
+    api()?.interactive(false);
+    go("thinking");
+    ask(a.audio, a.image);
   }
 
   useEffect(() => {
@@ -156,6 +193,7 @@ export default function LivePanel() {
       const L = api();
       if (e.type === "start") {
         abort.current?.abort();
+        lastAsk.current = null;
         L?.stopSpeaking();
         L?.interactive(false);
         setSpeaking(false);
@@ -182,6 +220,7 @@ export default function LivePanel() {
         await stopRec();
         turns.current = [];
         last.current = null;
+        lastAsk.current = null;
         setRaw("");
         setErr("");
         setSpeaking(false);
@@ -249,6 +288,12 @@ export default function LivePanel() {
             <button className="lv-btn" onClick={copy}>{copied ? "Copied" : "Copy"}</button>
             <button className="lv-btn" onClick={voice}>{speaking ? "Stop voice" : "Read aloud"}</button>
             <span className="lv-hint">Hold ⌘⌥ to follow up · Esc to close</span>
+          </div>
+        )}
+        {view === "error" && lastAsk.current && (
+          <div className="lv-foot">
+            <button className="lv-btn primary" onClick={retry}>Try again</button>
+            <span className="lv-hint">Esc to close</span>
           </div>
         )}
       </div>
