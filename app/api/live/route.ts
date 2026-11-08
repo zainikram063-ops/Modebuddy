@@ -36,15 +36,6 @@ Rules:
 
 type Turn = { q?: string; a?: string };
 
-async function signedIn() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !anon) return false;
-  const store = await cookies();
-  const sb = createServerClient(url, anon, { cookies: { getAll: () => store.getAll(), setAll: () => {} } });
-  const { data } = await sb.auth.getUser();
-  return !!data.user;
-}
 
 // One try at one model. Gives up if the model has not started answering in ATTEMPT_MS.
 async function gemini(model: string, body: unknown) {
@@ -63,15 +54,15 @@ async function gemini(model: string, body: unknown) {
 }
 
 // Turns Gemini's stream into plain text for the island
-function toText(body: ReadableStream<Uint8Array>) {
+function toText(body: ReadableStream<Uint8Array>, onDone?: (full: string) => Promise<void>) {
   const reader = body.getReader();
   const dec = new TextDecoder();
   const enc = new TextEncoder();
-  let buf = "";
+  let buf = "", full = "";
   return new ReadableStream<Uint8Array>({
     async pull(ctrl) {
       const { value, done } = await reader.read();
-      if (done) { ctrl.close(); return; }
+      if (done) { if (onDone) await onDone(full).catch(() => {}); ctrl.close(); return; }
       buf += dec.decode(value, { stream: true });
       const lines = buf.split("\n");
       buf = lines.pop() || "";
@@ -79,7 +70,7 @@ function toText(body: ReadableStream<Uint8Array>) {
         if (!line.startsWith("data:")) continue;
         try {
           const j = JSON.parse(line.slice(5));
-          for (const p of j.candidates?.[0]?.content?.parts || []) if (p.text && !p.thought) ctrl.enqueue(enc.encode(p.text));
+          for (const p of j.candidates?.[0]?.content?.parts || []) if (p.text && !p.thought) { full += p.text; ctrl.enqueue(enc.encode(p.text)); }
         } catch { /* partial line, skip */ }
       }
     },
@@ -91,7 +82,9 @@ export async function POST(req: Request) {
   const t0 = Date.now();
   try {
     if (!KEY) return Response.json({ error: "Live is missing the Gemini key on the server." }, { status: 500 });
-    if (!(await signedIn().catch(() => false))) return Response.json({ error: "Please sign in to ModeBuddy first." }, { status: 401 });
+    const auth = await session().catch(() => null);
+    if (!auth) return Response.json({ error: "Please sign in to ModeBuddy first." }, { status: 401 });
+    if (await overLimit(auth).catch(() => false)) return Response.json({ error: "You have used all of today's Live questions. They reset at midnight (UTC)." }, { status: 429 });
 
     const { audio, image, history } = (await req.json().catch(() => ({}))) as { audio?: string; image?: string | null; history?: Turn[] };
     if (!audio) return Response.json({ error: "I did not catch any audio. Try again." }, { status: 400 });
@@ -141,9 +134,45 @@ export async function POST(req: Request) {
       console.error("[live] no model answered:", errors.join(" | "));
       return Response.json({ error: "The AI is busy right now, try again in a moment. (" + (errors[errors.length - 1] || "no answer") + ")" }, { status: 502 });
     }
-    return new Response(toText(res.body), { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+    return new Response(toText(res.body, (t) => save(auth, t)), { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[live] crashed:", e);
     return Response.json({ error: "Live hit a server error: " + String(e instanceof Error ? e.message : e).slice(0, 160) }, { status: 500 });
   }
+}
+
+type Auth = { sb: ReturnType<typeof createServerClient>; userId: string };
+const LIMIT = Number(process.env.LIVE_DAILY_LIMIT || 100);
+
+async function session(): Promise<Auth | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !anon) return null;
+  const store = await cookies();
+  const sb = createServerClient(url, anon, { cookies: { getAll: () => store.getAll(), setAll: () => {} } });
+  const { data } = await sb.auth.getUser();
+  return data.user ? { sb, userId: data.user.id } : null;
+}
+
+// Daily Live limit, counted from the history table
+async function overLimit(a: Auth) {
+  const day = new Date();
+  day.setUTCHours(0, 0, 0, 0);
+  const { count, error } = await a.sb.from("live_history").select("id", { count: "exact", head: true }).eq("user_id", a.userId).gte("created_at", day.toISOString());
+  return !error && (count ?? 0) >= LIMIT;
+}
+
+// Save the finished question + answer to Live history
+async function save(a: Auth, full: string) {
+  const cut = full.search(/^-{3,}\s*$/m);
+  const head = cut >= 0 ? full.slice(0, cut) : "";
+  const get = (k: string) => (head.match(new RegExp("^\\s*" + k + "\\s*:\\s*(.*)$", "mi")) || [])[1]?.trim() || "";
+  const answer = (cut >= 0 ? full.slice(cut).replace(/^-{3,}\s*\n?/, "") : full).trim();
+  if (!answer) return;
+  await a.sb.from("live_history").insert({
+    user_id: a.userId,
+    question: get("HEARD").slice(0, 500),
+    answer: answer.slice(0, 20000),
+    mode: get("MODE").toLowerCase().replace(/[^a-z]/g, "").slice(0, 20) || "buddy",
+  });
 }

@@ -2241,3 +2241,16 @@ html.lv-panel-root, html.lv-panel-root body { background: transparent !important
 .gl-latch[data-mode="code"] .gl-cap, .gl-latch[data-mode="code"] .gl-dim { color: rgba(255,255,255,.45); }
 .gl-latch[data-mode="code"] .gl-btn { color: #f1f1ee; background: linear-gradient(#2b2b2b, #191919); box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 1px 2px rgba(0,0,0,.6), 0 6px 12px -6px rgba(0,0,0,.7); }
 .gl-latch[data-mode="code"] .gl-btn.primary { color: #0a0a0a; background: linear-gradient(#d8ff6a, #c4ff2e); box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.5), 0 8px 18px -8px rgba(196,255,46,.5); }
+
+/* ===== Live history page ===== */
+.lv-hist details.lv-h { border-bottom: 1px solid var(--rule); padding: 12px 0; }
+.lv-hist summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+.lv-hist summary::-webkit-details-marker { display: none; }
+.lv-hist summary b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.lv-hist time { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.lv-h-mode { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); }
+.lv-h-mode.code { background: #0a0a0a; color: #c4ff2e; }
+.lv-h-mode.study { background: #e07a2f; color: #fff; }
+.lv-h-mode.buddy { background: #c4ff2e; color: #0a0a0a; }
+.lv-h-a { padding: 10px 0 4px; font-size: 14.5px; line-height: 1.6; }
+.lv-h-a pre { background: var(--code-bg, #0d1117); color: #eee; padding: 12px; border-radius: 10px; overflow-x: auto; }
