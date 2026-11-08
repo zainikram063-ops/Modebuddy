@@ -9,11 +9,21 @@ import { LIVE_MODES, liveMode, type LiveMode } from "../../../lib/liveModes";
 type View = "idle" | "listening" | "thinking" | "answer" | "error";
 type Rec = { stream: MediaStream; ctx: AudioContext; node: ScriptProcessorNode; chunks: Float32Array[]; t0: number };
 type Turn = { q: string; a: string };
-type IconName = "insert" | "copy" | "check" | "speaker" | "stop" | "close" | "retry";
 
 const RATE = 16000;
-const CARD_W = 520;
-const BARS = 24;
+const LOGOS = ["/icons/192", "/favicon.ico"];
+const ICONS: Record<string, string> = {
+  insert: "M12 4v11M7.5 10.5l4.5 4.5 4.5-4.5M5 20h14",
+  copy: "M8.5 10.5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2zM15.5 8.5V6A1.5 1.5 0 0 0 14 4.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5",
+  check: "M5 12.5l4.5 4.5 9.5-10",
+  speaker: "M5 9.5v5h3l4.5 4v-13l-4.5 4zM16 9.5a3.5 3.5 0 0 1 0 5",
+  stop: "M8.5 7h7A1.5 1.5 0 0 1 17 8.5v7a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 15.5v-7A1.5 1.5 0 0 1 8.5 7z",
+  retry: "M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v3.8h3.8",
+  close: "M7 7l10 10M17 7L7 17",
+};
+const Icon = ({ name }: { name: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={ICONS[name]} /></svg>
+);
 
 function wav(chunks: Float32Array[]) {
   const n = chunks.reduce((s, c) => s + c.length, 0);
@@ -34,7 +44,6 @@ function b64(b: Uint8Array) {
   return btoa(s);
 }
 
-// Make the screenshot smaller before sending: faster upload, faster answer
 function shrink(img64: string, max = 1440, q = 0.65): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -65,17 +74,12 @@ function parse(raw: string, final: boolean) {
 const pasteable = (md: string) => ((md.match(/```[^\n]*\n([\s\S]*?)```/) || [])[1] ?? md).trim();
 const plain = (md: string) => md.replace(/```[\s\S]*?```/g, " ").replace(/[#*_`>|]/g, " ").replace(/\s+/g, " ").trim();
 
-function Icon({ name }: { name: IconName }) {
-  const p = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
-  switch (name) {
-    case "insert": return <svg {...p}><path d="M12 4v11" /><path d="m7.5 10.5 4.5 4.5 4.5-4.5" /><path d="M5 20h14" /></svg>;
-    case "copy": return <svg {...p}><rect x="8.5" y="8.5" width="11" height="11" rx="2" /><path d="M15.5 8.5V6A1.5 1.5 0 0 0 14 4.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5" /></svg>;
-    case "check": return <svg {...p}><path d="m5 12.5 4.5 4.5 9.5-10" /></svg>;
-    case "speaker": return <svg {...p}><path d="M5 9.5v5h3l4.5 4v-13l-4.5 4z" /><path d="M16 9.5a3.5 3.5 0 0 1 0 5" /></svg>;
-    case "stop": return <svg {...p}><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>;
-    case "retry": return <svg {...p}><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" /><path d="M4.5 4.5v3.8h3.8" /></svg>;
-    default: return <svg {...p}><path d="M7 7l10 10M17 7 7 17" /></svg>;
-  }
+function onColor(hex: string) {
+  const h = hex.replace("#", "");
+  const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h.slice(0, 6), 16);
+  if (Number.isNaN(n)) return "#0a0a0a";
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? "#0a0a0a" : "#ffffff";
 }
 
 export default function LivePanel() {
@@ -87,34 +91,42 @@ export default function LivePanel() {
   const [copied, setCopied] = useState(false);
   const [follow, setFollow] = useState(false);
   const [mode, setMode] = useState<LiveMode>(LIVE_MODES.buddy);
-  const [cardH, setCardH] = useState(140);
+  const [heard, setHeard] = useState("");
+  const [logo, setLogo] = useState(0);
+  const [latchH, setLatchH] = useState(88);
   const [leaving, setLeaving] = useState(false);
   const viewRef = useRef<View>("idle");
   const rec = useRef<Rec | null>(null);
   const starting = useRef<Promise<void> | null>(null);
-  const lvl = useRef(0);
-  const smooth = useRef(0);
-  const hist = useRef<number[]>([]);
-  const lastPush = useRef(0);
-  const raf = useRef(0);
+  const lvl = useRef(0), smooth = useRef(0), raf = useRef(0), leaveT = useRef(0), hearT = useRef(0), session = useRef(0);
+  const hearState = useRef({ busy: false, count: 0, seen: 0 });
   const abort = useRef<AbortController | null>(null);
   const turns = useRef<Turn[]>([]);
   const last = useRef<Turn | null>(null);
   const lastAsk = useRef<{ audio: string; image: string | null } | null>(null);
-  const leaveTimer = useRef(0);
-  const waveRef = useRef<HTMLSpanElement | null>(null);
-  const timeRef = useRef<HTMLSpanElement | null>(null);
-  const cardRef = useRef<HTMLDivElement | null>(null);
+  const latchRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
   const handler = useRef<(e: LiveEvent) => void>(() => {});
 
   const api = () => desktop()?.live;
   const go = (v: View) => { viewRef.current = v; setView(v); };
 
+  // Every ~1.3s while you talk, fetch "what was said so far" for the chatbox
+  async function partial(sid: number) {
+    const r = rec.current, s = hearState.current;
+    if (!r || s.busy || s.count >= 10 || r.chunks.length < 3 || r.chunks.length === s.seen) return;
+    s.busy = true; s.count += 1; s.seen = r.chunks.length;
+    try {
+      const res = await fetch("/api/live/hear", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ audio: b64(wav(r.chunks.slice())) }) });
+      const j = await res.json().catch(() => null);
+      if (session.current === sid && viewRef.current === "listening" && j?.text) setHeard(String(j.text));
+    } catch { /* live typing is optional */ } finally { s.busy = false; }
+  }
+
   async function startRec() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
     const ctx = new AudioContext({ sampleRate: RATE });
     await ctx.resume().catch(() => {});
-    const src = ctx.createMediaStreamSource(stream);
     const node = ctx.createScriptProcessor(4096, 1, 1);
     const chunks: Float32Array[] = [];
     node.onaudioprocess = (ev) => {
@@ -124,33 +136,16 @@ export default function LivePanel() {
       for (let i = 0; i < d.length; i += 16) sum += d[i] * d[i];
       lvl.current = Math.min(1, Math.sqrt(sum / (d.length / 16)) * 6);
     };
-    src.connect(node);
+    ctx.createMediaStreamSource(stream).connect(node);
     node.connect(ctx.destination);
     rec.current = { stream, ctx, node, chunks, t0: performance.now() };
-    hist.current = [];
-    smooth.current = 0;
-    lastPush.current = 0;
-    // Scrolling soundwave + timer, updated directly on the page (no React re-render each frame)
-    const tick = (now: number) => {
-      smooth.current += (lvl.current - smooth.current) * 0.4;
-      if (now - lastPush.current > 70) {
-        lastPush.current = now;
-        hist.current.push(smooth.current);
-        if (hist.current.length > BARS) hist.current.shift();
-        const bars = waveRef.current?.children;
-        if (bars) {
-          const off = BARS - hist.current.length;
-          for (let i = 0; i < bars.length; i++) {
-            const v = i < off ? 0 : hist.current[i - off];
-            (bars[i] as HTMLElement).style.transform = `scaleY(${(0.12 + Math.min(0.88, v * 1.2)).toFixed(3)})`;
-          }
-        }
-        const r = rec.current;
-        if (r && timeRef.current) {
-          const s = Math.max(0, Math.floor((now - r.t0) / 1000));
-          timeRef.current.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-        }
-      }
+    const sid = ++session.current;
+    hearState.current = { busy: false, count: 0, seen: 0 };
+    window.clearInterval(hearT.current);
+    hearT.current = window.setInterval(() => partial(sid), 1300);
+    const tick = () => {
+      smooth.current += (lvl.current - smooth.current) * 0.3;
+      latchRef.current?.style.setProperty("--lvl", smooth.current.toFixed(3));
       raf.current = requestAnimationFrame(tick);
     };
     raf.current = requestAnimationFrame(tick);
@@ -159,7 +154,9 @@ export default function LivePanel() {
   async function stopRec() {
     try { await starting.current; } catch { /* mic failed */ }
     starting.current = null;
+    window.clearInterval(hearT.current);
     cancelAnimationFrame(raf.current);
+    latchRef.current?.style.setProperty("--lvl", "0");
     const r = rec.current;
     rec.current = null;
     if (!r) return null;
@@ -171,8 +168,8 @@ export default function LivePanel() {
 
   function leave(then: () => void) {
     setLeaving(true);
-    window.clearTimeout(leaveTimer.current);
-    leaveTimer.current = window.setTimeout(then, 160);
+    window.clearTimeout(leaveT.current);
+    leaveT.current = window.setTimeout(then, 280);
   }
 
   function back() {
@@ -190,12 +187,7 @@ export default function LivePanel() {
     setDone(false);
     try {
       const pic = image ? await shrink(image).catch(() => image) : null;
-      const res = await fetch("/api/live", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ audio, image: pic, history: turns.current.slice(-4) }),
-        signal: ac.signal,
-      });
+      const res = await fetch("/api/live", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ audio, image: pic, history: turns.current.slice(-4) }), signal: ac.signal });
       const type = res.headers.get("content-type") || "";
       if (type.includes("text/html")) throw new Error("Please sign in to ModeBuddy first.");
       if (!res.ok || !res.body) {
@@ -231,7 +223,6 @@ export default function LivePanel() {
     const a = lastAsk.current;
     if (!a) return;
     setErr("");
-    api()?.interactive(false);
     go("thinking");
     ask(a.audio, a.image);
   }
@@ -240,18 +231,19 @@ export default function LivePanel() {
     handler.current = async (e: LiveEvent) => {
       const L = api();
       if (e.type === "start") {
-        window.clearTimeout(leaveTimer.current);
+        window.clearTimeout(leaveT.current);
         setLeaving(false);
         abort.current?.abort();
         lastAsk.current = null;
         L?.stopSpeaking();
-        L?.interactive(false);
         setSpeaking(false);
         const had = viewRef.current === "answer" && last.current;
         if (had && last.current) turns.current.push(last.current);
         else turns.current = [];
         last.current = null;
         setFollow(!!had);
+        setHeard("");
+        setRaw("");
         setErr("");
         setCopied(false);
         go("listening");
@@ -266,7 +258,7 @@ export default function LivePanel() {
         await stopRec();
         back();
       } else if (e.type === "hide") {
-        window.clearTimeout(leaveTimer.current);
+        window.clearTimeout(leaveT.current);
         abort.current?.abort();
         await stopRec();
         turns.current = [];
@@ -274,6 +266,7 @@ export default function LivePanel() {
         lastAsk.current = null;
         setRaw("");
         setErr("");
+        setHeard("");
         setSpeaking(false);
         setLeaving(false);
         go("idle");
@@ -294,16 +287,16 @@ export default function LivePanel() {
 
   useEffect(() => { if (p.mode) setMode(liveMode(p.mode)); }, [p.mode]);
 
-  // Measure the card so the island can grow to fit it
+  // Measure the content so the latch grows smoothly to fit it
   useLayoutEffect(() => {
-    const el = cardRef.current;
-    if (!isCard || !el) return;
-    const measure = () => setCardH(Math.min(560, Math.ceil(el.offsetHeight)));
+    const el = innerRef.current;
+    if (!el) return;
+    const measure = () => setLatchH(Math.min(620, Math.ceil(el.offsetHeight)));
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [isCard]);
+  }, [view]);
 
   const out = () => pasteable(p.answer || raw);
   const copy = () => { api()?.copy(out()); setCopied(true); window.setTimeout(() => setCopied(false), 1500); };
@@ -314,70 +307,64 @@ export default function LivePanel() {
     if (t) { setSpeaking(true); L?.speak(t); }
   };
 
-  if (view === "idle") return <div className="lv3-stage" />;
+  if (view === "idle") return <div className="lt-stage" />;
 
-  const [w, h] = isCard ? [CARD_W, cardH] : view === "thinking" ? [236, 40] : [268, 40];
-  const style = { "--w": `${w}px`, "--h": `${h}px`, "--lv-a": view === "error" ? "#ff6b6b" : mode.color } as CSSProperties;
+  const accent = view === "error" ? "#ff6b6b" : mode.color;
+  const said = view === "listening" ? heard : p.heard || heard;
+  const shown = said.length > 90 ? "…" + said.slice(-90) : said;
+  const style = { "--a": accent, "--on": onColor(accent), "--h": `${latchH}px` } as CSSProperties;
 
   return (
-    <div className="lv3-stage">
-      <div
-        className={`lv3-island ${isCard ? "is-card" : ""} ${leaving ? "out" : ""}`}
-        style={style}
-        data-view={view}
-        onMouseEnter={() => api()?.interactive(true)}
-        onMouseLeave={() => api()?.interactive(false)}
-      >
-        {!isCard ? (
-          <div className="lv3-pill" key={view} style={{ width: w }}>
-            {view === "listening" ? (
-              <>
-                <span className="lv3-dot live" />
-                <span className="lv3-label">{follow ? "Follow-up" : "Listening"}</span>
-                <span className="lv3-wave" ref={waveRef}>{Array.from({ length: BARS }, (_, i) => <i key={i} />)}</span>
-                <span className="lv3-time" ref={timeRef}>0:00</span>
-              </>
-            ) : (
-              <>
-                <span className="lv3-spin" />
-                <span className="lv3-label">Thinking</span>
-                <span className="lv3-sub">Reading your screen</span>
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="lv3-card" ref={cardRef} style={{ width: CARD_W }}>
-            <div className="lv3-head">
-              {view === "answer" && !done ? <span className="lv3-spin sm" /> : <span className="lv3-dot" />}
-              <span className="lv3-mode">{view === "error" ? "Error" : mode.name}</span>
-              {view === "answer" && p.heard && <span className="lv3-q">{p.heard}</span>}
-              <button className="lv3-close" onClick={() => leave(() => api()?.hide())} aria-label="Close"><Icon name="close" /></button>
-            </div>
-            <div className="lv3-body">
-              {view === "error" ? (
-                <p className="lv3-err">{err}</p>
-              ) : p.answer ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{p.answer}</ReactMarkdown>
+    <div className="lt-stage">
+      <div ref={latchRef} className={`lt-latch ${leaving ? "out" : ""}`} data-view={view} style={style}
+        onMouseEnter={() => api()?.interactive(true)} onMouseLeave={() => api()?.interactive(false)}>
+        <i className="lt-sheen" key={isCard ? "answer" : "open"} />
+        <div ref={innerRef} className="lt-inner">
+          <div className="lt-top">
+            <div className={`lt-logo ${view}`}>
+              <i className="lt-halo" />
+              <i className="lt-orbit" />
+              {logo < LOGOS.length ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={LOGOS[logo]} alt="ModeBuddy" onError={() => setLogo((n) => n + 1)} />
               ) : (
-                <p className="lv3-muted">Writing…</p>
+                <span className="lt-mark">MB</span>
               )}
             </div>
-            {view === "answer" && done && (
-              <div className="lv3-foot">
-                <span className="lv3-hint">Hold ⌘⌥ to follow up</span>
-                <button className="lv3-btn" onClick={voice}><Icon name={speaking ? "stop" : "speaker"} />{speaking ? "Stop" : "Read aloud"}</button>
-                <button className="lv3-btn" onClick={copy}><Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy"}</button>
-                <button className="lv3-btn primary" onClick={() => leave(() => api()?.insert(out()))}><Icon name="insert" />Insert</button>
-              </div>
-            )}
-            {view === "error" && lastAsk.current && (
-              <div className="lv3-foot">
-                <span className="lv3-hint">Esc to close</span>
-                <button className="lv3-btn primary" onClick={retry}><Icon name="retry" />Try again</button>
-              </div>
-            )}
+            <div className={`lt-box ${view}`}>
+              <p className={`lt-said ${shown ? "" : "ph"}`}>
+                {shown ? shown.split(" ").map((wd, i) => <span key={i} className="lt-word">{wd} </span>) : view === "listening" ? (follow ? "Ask a follow-up…" : "Listening…") : "…"}
+                {view === "listening" && <i className="lt-caret" />}
+              </p>
+              {view === "thinking" && <span className="lt-dots"><i /><i /><i /></span>}
+            </div>
+            <div className="lt-side">
+              <span className="lt-mode"><i />{view === "error" ? "Error" : mode.name}</span>
+              <button className="lt-x" onClick={() => leave(() => api()?.hide())} aria-label="Close"><Icon name="close" /></button>
+            </div>
           </div>
-        )}
+          {isCard && (
+            <div className="lt-answer">
+              <div className={`lt-msg ${view === "error" ? "err" : ""}`}>
+                {view === "error" ? <p>{err}</p> : p.answer ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{p.answer}</ReactMarkdown> : <span className="lt-dots"><i /><i /><i /></span>}
+              </div>
+              {view === "answer" && done && (
+                <div className="lt-actions">
+                  <button className="lt-btn primary" onClick={() => leave(() => api()?.insert(out()))}><Icon name="insert" />Insert</button>
+                  <button className="lt-btn" onClick={copy}><Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy"}</button>
+                  <button className="lt-btn" onClick={voice}><Icon name={speaking ? "stop" : "speaker"} />{speaking ? "Stop" : "Read aloud"}</button>
+                  <span className="lt-hint">Hold ⌘⌥ to follow up</span>
+                </div>
+              )}
+              {view === "error" && lastAsk.current && (
+                <div className="lt-actions">
+                  <button className="lt-btn primary" onClick={retry}><Icon name="retry" />Try again</button>
+                  <span className="lt-hint">Esc to close</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
