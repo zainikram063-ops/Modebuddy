@@ -11,7 +11,6 @@ type Rec = { stream: MediaStream; ctx: AudioContext; node: ScriptProcessorNode; 
 type Turn = { q: string; a: string };
 
 const RATE = 16000;
-const LOGOS = ["/icons/192", "/favicon.ico"];
 const ICONS: Record<string, string> = {
   insert: "M12 4v11M7.5 10.5l4.5 4.5 4.5-4.5M5 20h14",
   copy: "M8.5 10.5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2zM15.5 8.5V6A1.5 1.5 0 0 0 14 4.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5",
@@ -92,7 +91,6 @@ export default function LivePanel() {
   const [follow, setFollow] = useState(false);
   const [mode, setMode] = useState<LiveMode>(LIVE_MODES.buddy);
   const [heard, setHeard] = useState("");
-  const [logo, setLogo] = useState(0);
   const [latchH, setLatchH] = useState(88);
   const [leaving, setLeaving] = useState(false);
   const viewRef = useRef<View>("idle");
@@ -307,49 +305,47 @@ export default function LivePanel() {
     if (t) { setSpeaking(true); L?.speak(t); }
   };
 
-  if (view === "idle") return <div className="mb-stage" />;
+  if (view === "idle") return <div className="gl-stage" />;
 
-  const accent = view === "error" ? "#ff453a" : mode.color;
+  const accent = view === "error" ? "#ff6b5e" : mode.color;
   const said = view === "listening" ? heard : p.heard || heard;
   const words = (said.length > 90 ? "…" + said.slice(-90) : said).split(" ").filter(Boolean);
   const style = { "--a": accent, "--on": onColor(accent), "--h": `${latchH}px` } as CSSProperties;
 
   return (
-    <div className="mb-stage">
-      <div ref={latchRef} className={`mb-latch ${leaving ? "out" : ""}`} data-view={view} style={style}
+    <div className="gl-stage">
+      <div ref={latchRef} className={`gl-latch ${leaving ? "out" : ""}`} data-view={view} style={style}
+        onMouseMove={(e) => { const el = e.currentTarget, r = el.getBoundingClientRect(); el.style.setProperty("--mx", `${Math.round(((e.clientX - r.left) / r.width) * 100)}%`); }}
         onMouseEnter={() => api()?.interactive(true)} onMouseLeave={() => api()?.interactive(false)}>
-        <div ref={innerRef} className="mb-inner">
-          <div className="mb-row">
-            <div className="mb-logo">
-              {logo < LOGOS.length ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={LOGOS[logo]} alt="" onError={() => setLogo((n) => n + 1)} />
-              ) : <span>MB</span>}
-              <svg className="mb-ring" viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" /></svg>
-            </div>
-            <div className="mb-field">
+        <i className="gl-glint" key={isCard ? "a" : "b"} />
+        <div ref={innerRef} className="gl-inner">
+          <div className="gl-row">
+            <div className="gl-logo"><Ghost state={view} /></div>
+            <div className="gl-field">
               <p className={words.length ? "" : "ph"}>
                 {words.length
                   ? words.map((wd, i) => <span key={i} className={view === "listening" && i >= words.length - 2 ? "tent" : ""}>{wd} </span>)
                   : view === "listening" ? (follow ? "Ask a follow-up" : "Listening") : "…"}
-                {view === "listening" && <i className="mb-caret" />}
+                {view === "listening" && <i className="gl-caret" />}
               </p>
-              {view === "listening" && <span className="mb-wave">{[0.6, 1, 0.8, 1.1, 0.7].map((k, i) => <i key={i} style={{ "--k": k } as CSSProperties} />)}</span>}
-              {view === "thinking" && <span className="mb-spin" />}
+              {view === "thinking" && <span className="gl-dots"><i /><i /><i /></span>}
             </div>
-            {isCard && <button className="mb-x" onClick={() => leave(() => api()?.hide())} aria-label="Close"><Icon name="close" /></button>}
+            <div className="gl-side">
+              <span className="gl-mode"><i />{view === "error" ? "Error" : mode.name}</span>
+              {isCard && <button className="gl-x" onClick={() => leave(() => api()?.hide())} aria-label="Close"><Icon name="close" /></button>}
+            </div>
           </div>
           {isCard && (
-            <div className="mb-body">
-              <div className={`mb-text ${view === "error" ? "err" : ""}`}>
-                {view === "error" ? <p>{err}</p> : p.answer ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{p.answer}</ReactMarkdown> : <p className="mb-dim">Writing…</p>}
+            <div className="gl-body">
+              <div className={`gl-text ${view === "error" ? "err" : ""}`}>
+                {view === "error" ? <p>{err}</p> : p.answer ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{p.answer}</ReactMarkdown> : <p className="gl-dim">Writing…</p>}
               </div>
               {(view === "error" ? !!lastAsk.current : done) && (
-                <div className="mb-foot">
-                  <span className="mb-cap">{view === "error" ? "Esc to close" : `${mode.name} · Hold ⌘⌥ to follow up`}</span>
-                  {view === "answer" && <button className="mb-btn" onClick={voice}><Icon name={speaking ? "stop" : "speaker"} />{speaking ? "Stop" : "Read"}</button>}
-                  {view === "answer" && <button className="mb-btn" onClick={copy}><Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy"}</button>}
-                  <button className="mb-btn primary" onClick={view === "error" ? retry : () => leave(() => api()?.insert(out()))}>
+                <div className="gl-foot">
+                  <span className="gl-cap">{view === "error" ? "Esc to close" : "Hold ⌘⌥ to follow up"}</span>
+                  {view === "answer" && <button className="gl-btn" onClick={voice}><Icon name={speaking ? "stop" : "speaker"} />{speaking ? "Stop" : "Read"}</button>}
+                  {view === "answer" && <button className="gl-btn" onClick={copy}><Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy"}</button>}
+                  <button className="gl-btn primary" onClick={view === "error" ? retry : () => leave(() => api()?.insert(out()))}>
                     <Icon name={view === "error" ? "retry" : "insert"} />{view === "error" ? "Try again" : "Insert"}
                   </button>
                 </div>
@@ -359,5 +355,20 @@ export default function LivePanel() {
         </div>
       </div>
     </div>
+  );
+}
+
+// The ModeBuddy ghost, drawn as a vector so it can blink, float, sway and jump
+function Ghost({ state }: { state: View }) {
+  return (
+    <svg className={`gh gh-${state}`} viewBox="0 0 100 100" aria-hidden>
+      <g className="gh-voice">
+        <g className="gh-body">
+          <path className="gh-shape" d="M23.75 43A26.25 26.25 0 0 1 76.25 43V76Q69.69 84 63.13 76Q56.56 84 50 76Q43.44 84 36.88 76Q30.31 84 23.75 76Z" />
+          <g className="gh-eyes"><ellipse cx="41.25" cy="46" rx="2.8" ry="5.2" /><ellipse cx="58.75" cy="46" rx="2.8" ry="5.2" /></g>
+          <g className="gh-happy"><path d="M37.5 48Q41.25 41 45 48" /><path d="M55 48Q58.75 41 62.5 48" /></g>
+        </g>
+      </g>
+    </svg>
   );
 }
