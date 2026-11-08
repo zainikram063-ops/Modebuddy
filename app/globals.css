@@ -2224,3 +2224,20 @@ html.lv-panel-root, html.lv-panel-root body { background: transparent !important
 .gl-btn svg { width: 14px; height: 14px; }
 .gl-btn.primary { color: #fff; background: linear-gradient(#34312d, #171513); box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 1px 2px rgba(0,0,0,.3), 0 8px 16px -8px rgba(0,0,0,.55); }
 @media (prefers-reduced-motion: reduce) { .gl-latch, .gl-inner, .gl-body, .gl-glint, .gl-foot > *, .gh-body, .gh-eyes, .gh-eyes ellipse { animation: none !important; } }
+
+/* ===== Live glass: Code mode (black + lime) ===== */
+.gl-latch[data-mode="code"]:not([data-view="error"]) { --a: #c4ff2e !important; }
+.gl-latch[data-mode="code"] { color: #f1f1ee; background: radial-gradient(90% 70% at var(--mx, 72%) -10%, rgba(255,255,255,.14), transparent 60%), linear-gradient(118deg, transparent 22%, rgba(255,255,255,.07) 34%, rgba(255,255,255,.02) 42%, transparent 50%), linear-gradient(118deg, transparent 58%, rgba(196,255,46,.05) 66%, transparent 74%), linear-gradient(160deg, #1c1c1c 0%, #0c0c0c 45%, #000 100%); box-shadow: inset 0 8px 10px -8px rgba(0,0,0,.6), inset 0 -1px 0 rgba(255,255,255,.16), inset 0 -10px 18px -12px rgba(0,0,0,.8), inset 1px 0 0 rgba(255,255,255,.06), inset -1px 0 0 rgba(255,255,255,.06), 0 26px 50px -20px rgba(0,0,0,.7), 0 6px 18px rgba(0,0,0,.35); }
+.gl-latch[data-mode="code"] .gl-glint { mix-blend-mode: screen; opacity: .35; }
+.gl-latch[data-mode="code"] .gl-field { background: rgba(255,255,255,.05); box-shadow: inset 0 1.5px 3px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.06), 0 1px 0 rgba(255,255,255,.06); }
+.gl-latch[data-mode="code"] .gl-field p.ph, .gl-latch[data-mode="code"] .gl-field p span.tent { color: rgba(255,255,255,.45); }
+.gl-latch[data-mode="code"] .gl-caret, .gl-latch[data-mode="code"] .gl-dots i { background: var(--a); }
+.gl-latch[data-mode="code"] .gl-mode, .gl-latch[data-mode="code"] .gl-text a { color: var(--a); }
+.gl-latch[data-mode="code"] .gl-x { color: #e8e8e4; background: linear-gradient(#2c2c2c, #1a1a1a); box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 1px 2px rgba(0,0,0,.6); }
+.gl-latch[data-mode="code"] .gl-text { color: #ecece8; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)); box-shadow: inset 0 1px 0 rgba(255,255,255,.08), inset 0 0 0 1px rgba(255,255,255,.04); }
+.gl-latch[data-mode="code"] .gl-text code { background: rgba(196,255,46,.1); color: #e3ff9a; }
+.gl-latch[data-mode="code"] .gl-text pre { background: #000; color: #ecece8; box-shadow: inset 0 0 0 1px rgba(196,255,46,.14); }
+.gl-latch[data-mode="code"] .gl-text pre code { background: none; color: inherit; }
+.gl-latch[data-mode="code"] .gl-cap, .gl-latch[data-mode="code"] .gl-dim { color: rgba(255,255,255,.45); }
+.gl-latch[data-mode="code"] .gl-btn { color: #f1f1ee; background: linear-gradient(#2b2b2b, #191919); box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 1px 2px rgba(0,0,0,.6), 0 6px 12px -6px rgba(0,0,0,.7); }
+.gl-latch[data-mode="code"] .gl-btn.primary { color: #0a0a0a; background: linear-gradient(#d8ff6a, #c4ff2e); box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.5), 0 8px 18px -8px rgba(196,255,46,.5); }

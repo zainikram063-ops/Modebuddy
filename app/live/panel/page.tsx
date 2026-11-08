@@ -314,7 +314,7 @@ export default function LivePanel() {
 
   return (
     <div className="gl-stage">
-      <div ref={latchRef} className={`gl-latch ${leaving ? "out" : ""}`} data-view={view} style={style}
+      <div ref={latchRef} className={`gl-latch ${leaving ? "out" : ""}`} data-view={view} data-mode={mode.id} style={style}
         onMouseMove={(e) => { const el = e.currentTarget, r = el.getBoundingClientRect(); el.style.setProperty("--mx", `${Math.round(((e.clientX - r.left) / r.width) * 100)}%`); }}
         onMouseEnter={() => api()?.interactive(true)} onMouseLeave={() => api()?.interactive(false)}>
         <i className="gl-glint" key={isCard ? "a" : "b"} />
