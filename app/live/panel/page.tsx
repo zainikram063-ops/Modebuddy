@@ -307,59 +307,51 @@ export default function LivePanel() {
     if (t) { setSpeaking(true); L?.speak(t); }
   };
 
-  if (view === "idle") return <div className="lt-stage" />;
+  if (view === "idle") return <div className="mb-stage" />;
 
-  const accent = view === "error" ? "#ff6b6b" : mode.color;
+  const accent = view === "error" ? "#ff453a" : mode.color;
   const said = view === "listening" ? heard : p.heard || heard;
-  const shown = said.length > 90 ? "…" + said.slice(-90) : said;
+  const words = (said.length > 90 ? "…" + said.slice(-90) : said).split(" ").filter(Boolean);
   const style = { "--a": accent, "--on": onColor(accent), "--h": `${latchH}px` } as CSSProperties;
 
   return (
-    <div className="lt-stage">
-      <div ref={latchRef} className={`lt-latch ${leaving ? "out" : ""}`} data-view={view} style={style}
+    <div className="mb-stage">
+      <div ref={latchRef} className={`mb-latch ${leaving ? "out" : ""}`} data-view={view} style={style}
         onMouseEnter={() => api()?.interactive(true)} onMouseLeave={() => api()?.interactive(false)}>
-        <i className="lt-sheen" key={isCard ? "answer" : "open"} />
-        <div ref={innerRef} className="lt-inner">
-          <div className="lt-top">
-            <div className={`lt-logo ${view}`}>
-              <i className="lt-halo" />
-              <i className="lt-orbit" />
+        <div ref={innerRef} className="mb-inner">
+          <div className="mb-row">
+            <div className="mb-logo">
               {logo < LOGOS.length ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={LOGOS[logo]} alt="ModeBuddy" onError={() => setLogo((n) => n + 1)} />
-              ) : (
-                <span className="lt-mark">MB</span>
-              )}
+                <img src={LOGOS[logo]} alt="" onError={() => setLogo((n) => n + 1)} />
+              ) : <span>MB</span>}
+              <svg className="mb-ring" viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" /></svg>
             </div>
-            <div className={`lt-box ${view}`}>
-              <p className={`lt-said ${shown ? "" : "ph"}`}>
-                {shown ? shown.split(" ").map((wd, i) => <span key={i} className="lt-word">{wd} </span>) : view === "listening" ? (follow ? "Ask a follow-up…" : "Listening…") : "…"}
-                {view === "listening" && <i className="lt-caret" />}
+            <div className="mb-field">
+              <p className={words.length ? "" : "ph"}>
+                {words.length
+                  ? words.map((wd, i) => <span key={i} className={view === "listening" && i >= words.length - 2 ? "tent" : ""}>{wd} </span>)
+                  : view === "listening" ? (follow ? "Ask a follow-up" : "Listening") : "…"}
+                {view === "listening" && <i className="mb-caret" />}
               </p>
-              {view === "thinking" && <span className="lt-dots"><i /><i /><i /></span>}
+              {view === "listening" && <span className="mb-wave">{[0.6, 1, 0.8, 1.1, 0.7].map((k, i) => <i key={i} style={{ "--k": k } as CSSProperties} />)}</span>}
+              {view === "thinking" && <span className="mb-spin" />}
             </div>
-            <div className="lt-side">
-              <span className="lt-mode"><i />{view === "error" ? "Error" : mode.name}</span>
-              <button className="lt-x" onClick={() => leave(() => api()?.hide())} aria-label="Close"><Icon name="close" /></button>
-            </div>
+            {isCard && <button className="mb-x" onClick={() => leave(() => api()?.hide())} aria-label="Close"><Icon name="close" /></button>}
           </div>
           {isCard && (
-            <div className="lt-answer">
-              <div className={`lt-msg ${view === "error" ? "err" : ""}`}>
-                {view === "error" ? <p>{err}</p> : p.answer ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{p.answer}</ReactMarkdown> : <span className="lt-dots"><i /><i /><i /></span>}
+            <div className="mb-body">
+              <div className={`mb-text ${view === "error" ? "err" : ""}`}>
+                {view === "error" ? <p>{err}</p> : p.answer ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{p.answer}</ReactMarkdown> : <p className="mb-dim">Writing…</p>}
               </div>
-              {view === "answer" && done && (
-                <div className="lt-actions">
-                  <button className="lt-btn primary" onClick={() => leave(() => api()?.insert(out()))}><Icon name="insert" />Insert</button>
-                  <button className="lt-btn" onClick={copy}><Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy"}</button>
-                  <button className="lt-btn" onClick={voice}><Icon name={speaking ? "stop" : "speaker"} />{speaking ? "Stop" : "Read aloud"}</button>
-                  <span className="lt-hint">Hold ⌘⌥ to follow up</span>
-                </div>
-              )}
-              {view === "error" && lastAsk.current && (
-                <div className="lt-actions">
-                  <button className="lt-btn primary" onClick={retry}><Icon name="retry" />Try again</button>
-                  <span className="lt-hint">Esc to close</span>
+              {(view === "error" ? !!lastAsk.current : done) && (
+                <div className="mb-foot">
+                  <span className="mb-cap">{view === "error" ? "Esc to close" : `${mode.name} · Hold ⌘⌥ to follow up`}</span>
+                  {view === "answer" && <button className="mb-btn" onClick={voice}><Icon name={speaking ? "stop" : "speaker"} />{speaking ? "Stop" : "Read"}</button>}
+                  {view === "answer" && <button className="mb-btn" onClick={copy}><Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy"}</button>}
+                  <button className="mb-btn primary" onClick={view === "error" ? retry : () => leave(() => api()?.insert(out()))}>
+                    <Icon name={view === "error" ? "retry" : "insert"} />{view === "error" ? "Try again" : "Insert"}
+                  </button>
                 </div>
               )}
             </div>
