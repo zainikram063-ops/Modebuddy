@@ -118,14 +118,16 @@ export default function LivePanel() {
   const api = () => desktop()?.live;
   const go = (v: View) => { viewRef.current = v; setView(v); };
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  type Step = { do: string; app?: string; url?: string; text?: string; keys?: string; target?: string; ms?: number; x?: number; y?: number };
-  type Actor = { act: (s: Step) => Promise<{ ok: boolean; error?: string }>; shot: () => Promise<string | null> };
+  type Step = { do: string; name?: string; kind?: string; path?: string; app?: string; url?: string; text?: string; keys?: string; target?: string; ms?: number; x?: number; y?: number };
+  type Actor = { act: (s: Step) => Promise<{ ok: boolean; error?: string; items?: { path: string; folder: boolean }[] }>; shot: () => Promise<string | null> };
   const [steps, setSteps] = useState<{ label: string; state: string }[]>([]);
   const stopRun = useRef(false);
   const installed = useRef<string[]>([]);
   const actor = () => (window as unknown as { modebuddyAct?: Actor }).modebuddyAct;
   const label = (s: Step) =>
-    s.do === "open_app" ? `Open ${s.app}`
+    s.do === "find" ? `Find “${s.name}”`
+    : s.do === "open_path" ? `Open ${String(s.path || "").split("/").slice(-2).join("/")}`
+    : s.do === "open_app" ? `Open ${s.app}`
     : s.do === "open_url" ? `Go to ${String(s.url || "").replace(/^https?:\/\/(www\.)?/, "").slice(0, 42)}`
     : s.do === "type" ? `Type “${String(s.text || "").slice(0, 36)}${String(s.text || "").length > 36 ? "…" : ""}”`
     : s.do === "key" ? `Press ${s.keys}`
@@ -146,17 +148,19 @@ export default function LivePanel() {
     const A = actor();
     if (!A) { setErr("Update the ModeBuddy Mac app so it can do things for you."); go("error"); return; }
     stopRun.current = false;
-    const log: { label: string; state: string }[] = [];
-    const show = () => setSteps(log.map((x) => ({ ...x })));
-    const exec = async (raw: Step) => {
+    const log: { label: string; state: string; found?: string[] }[] = [];
+    const show = () => setSteps(log.map((x) => ({ label: x.label, state: x.state })));
+    const exec = async (raw: Step): Promise<{ ok: boolean; found?: string[] }> => {
       let s = raw;
-      if (s.do === "open_app") { const a = realApp(s.app); if (!a) return false; s = { ...s, app: a }; }
-      if (s.do === "open_url") { if (!/^https?:\/\//i.test(String(s.url || ""))) return false; s = { ...s, app: s.app ? realApp(s.app) || undefined : undefined }; }
-      if (s.do === "click") { if (typeof s.x !== "number" || typeof s.y !== "number") return false; if (s.x > 1 || s.y > 1) s = { ...s, x: s.x / 1000, y: s.y / 1000 }; }
-      const res = await A.act(s).catch(() => ({ ok: false }));
-      return res.ok;
+      if (s.do === "open_app") { const a = realApp(s.app); if (!a) return { ok: false }; s = { ...s, app: a }; }
+      if (s.do === "open_url") { if (!/^https?:\/\//i.test(String(s.url || ""))) return { ok: false }; s = { ...s, app: s.app ? realApp(s.app) || undefined : undefined }; }
+      if (s.do === "open_path" && s.app) s = { ...s, app: realApp(s.app) || undefined };
+      if (s.do === "click") { if (typeof s.x !== "number" || typeof s.y !== "number") return { ok: false }; if (s.x > 1 || s.y > 1) s = { ...s, x: s.x / 1000, y: s.y / 1000 }; }
+      const res = await A.act(s).catch(() => ({ ok: false, items: [] }));
+      if (s.do === "find") { const items = res.items || []; return { ok: items.length > 0, found: items.map((i) => (i.folder ? "folder: " : "file: ") + i.path) }; }
+      return { ok: !!res.ok };
     };
-    let queue: Step[] = list.filter((s) => s.do === "open_app" || s.do === "open_url").slice(0, 1);
+    let queue: Step[] = list.filter((s) => s.do === "open_app" || s.do === "open_url" || s.do === "find").slice(0, 1);
     let fails = 0;
     for (let round = 0; round < 16 && !stopRun.current && fails < 3; round++) {
       if (!queue.length) {
@@ -173,10 +177,12 @@ export default function LivePanel() {
       const s = queue.shift() as Step;
       log.push({ label: label(s), state: "doing" });
       show();
-      const ok = await exec(s);
-      log[log.length - 1].state = ok ? "done" : "fail";
+      const r = await exec(s);
+      log[log.length - 1].state = r.ok ? "done" : "fail";
+      if (r.found) log[log.length - 1].found = r.found;
       show();
-      if (ok) fails = 0; else { fails += 1; queue = []; }
+      if (r.ok) fails = 0; else { fails += 1; queue = []; }
+      if (s.do === "find") queue = [];
     }
     await A.act({ do: "done" }).catch(() => ({ ok: false }));
   }
