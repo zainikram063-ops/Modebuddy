@@ -43,7 +43,7 @@ function b64(b: Uint8Array) {
   return btoa(s);
 }
 
-function shrink(img64: string, max = 1440, q = 0.65): Promise<string> {
+function shrink(img64: string, max = 1280, q = 0.6): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -113,6 +113,26 @@ export default function LivePanel() {
 
   const api = () => desktop()?.live;
   const go = (v: View) => { viewRef.current = v; setView(v); };
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Speak with the ElevenLabs / Fish Audio voice, or the Mac voice if that is not set up
+  function talk(t: string) {
+    hush();
+    setSpeaking(true);
+    const a = new Audio("/api/live/speak?t=" + encodeURIComponent(t.slice(0, 600)));
+    audioRef.current = a;
+    const fallback = () => { if (audioRef.current === a) { audioRef.current = null; api()?.speak(t); } };
+    a.onended = () => setSpeaking(false);
+    a.onerror = fallback;
+    a.play().catch(fallback);
+  }
+
+  function hush() {
+    const a = audioRef.current;
+    audioRef.current = null;
+    if (a) { a.onended = null; a.onerror = null; a.pause(); a.removeAttribute("src"); }
+    api()?.stopSpeaking();
+  }
 
   // Every ~1.3s while you talk, fetch "what was said so far" for the chatbox
   async function partial(sid: number) {
@@ -145,7 +165,7 @@ export default function LivePanel() {
     const sid = ++session.current;
     hearState.current = { busy: false, count: 0, seen: 0 };
     window.clearInterval(hearT.current);
-    hearT.current = window.setInterval(() => partial(sid), 1300);
+    hearT.current = window.setInterval(() => partial(sid), 1700);
     const tick = () => {
       smooth.current += (lvl.current - smooth.current) * 0.3;
       latchRef.current?.style.setProperty("--lvl", smooth.current.toFixed(3));
@@ -203,16 +223,18 @@ export default function LivePanel() {
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let text = "";
+      let said = false;
       for (;;) {
         const { value, done: end } = await reader.read();
         if (end) break;
         text += dec.decode(value, { stream: true });
         setRaw(text);
+        if (!said && /^\s*SAY\s*:.*\n/mi.test(text)) { said = true; const v = parse(text, false).say; if (v) talk(v); }
       }
       setDone(true);
       const p = parse(text, true);
       last.current = { q: p.heard || "(question)", a: p.answer || text };
-      if (p.say) { setSpeaking(true); api()?.speak(p.say); }
+      if (!said && p.say) talk(p.say);
     } catch (x) {
       if (ac.signal.aborted && ac.signal.reason !== "timeout") return;
       setErr(ac.signal.reason === "timeout" ? "ModeBuddy took too long to answer. Try again." : x instanceof Error ? x.message : "Something went wrong. Try again.");
@@ -232,13 +254,12 @@ export default function LivePanel() {
 
   useEffect(() => {
     handler.current = async (e: LiveEvent) => {
-      const L = api();
       if (e.type === "start") {
         window.clearTimeout(leaveT.current);
         setLeaving(false);
         abort.current?.abort();
         lastAsk.current = null;
-        L?.stopSpeaking();
+        hush();
         setSpeaking(false);
         const had = viewRef.current === "answer" && last.current;
         if (had && last.current) turns.current.push(last.current);
@@ -270,6 +291,7 @@ export default function LivePanel() {
         setRaw("");
         setErr("");
         setHeard("");
+        hush();
         setSpeaking(false);
         setLeaving(false);
         go("idle");
@@ -317,10 +339,9 @@ export default function LivePanel() {
   const out = () => pasteable(p.answer || raw);
   const copy = () => { api()?.copy(out()); setCopied(true); window.setTimeout(() => setCopied(false), 1500); };
   const voice = () => {
-    const L = api();
-    if (speaking) { L?.stopSpeaking(); setSpeaking(false); return; }
+    if (speaking) { hush(); setSpeaking(false); return; }
     const t = p.say || plain(p.answer).slice(0, 500);
-    if (t) { setSpeaking(true); L?.speak(t); }
+    if (t) talk(t);
   };
 
   if (view === "idle") return <div className="gl-stage" />;
@@ -360,7 +381,7 @@ export default function LivePanel() {
               </div>
               {(view === "error" ? !!lastAsk.current : done) && (
                 <div className="gl-foot">
-                  <span className="gl-cap">{view === "error" ? "Esc to close" : "Hold ⌘⌥ to follow up"}</span>
+                  <span className="gl-cap">{view === "error" ? "Esc to close" : "⌘⌥ to follow up"}</span>
                   {view === "answer" && <button className="gl-btn" onClick={voice}><Icon name={speaking ? "stop" : "speaker"} />{speaking ? "Stop" : "Read"}</button>}
                   {view === "answer" && <button className="gl-btn" onClick={copy}><Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy"}</button>}
                   <button className="gl-btn primary" onClick={view === "error" ? retry : () => leave(() => api()?.insert(out()))}>

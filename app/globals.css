@@ -2254,3 +2254,25 @@ html.lv-panel-root, html.lv-panel-root body { background: transparent !important
 .lv-h-mode.buddy { background: #c4ff2e; color: #0a0a0a; }
 .lv-h-a { padding: 10px 0 4px; font-size: 14.5px; line-height: 1.6; }
 .lv-h-a pre { background: var(--code-bg, #0d1117); color: #eee; padding: 12px; border-radius: 10px; overflow-x: auto; }
+
+/* ===== Live glass: compact ===== */
+.gl-latch { width: 440px; border-radius: 0 0 26px 26px; }
+.gl-row { height: 62px; gap: 10px; padding: 0 12px 0 14px; }
+.gl-logo { width: 38px; height: 38px; border-radius: 11px; }
+.gh { width: 28px; height: 28px; }
+.gl-field { height: 38px; border-radius: 19px; padding: 0 12px 0 14px; }
+.gl-field p { font-size: 13.5px; }
+.gl-caret { height: 15px; }
+.gl-side { gap: 5px; }
+.gl-mode { font-size: 9.5px; }
+.gl-x { width: 22px; height: 22px; }
+.gl-x svg { width: 9px; height: 9px; }
+.gl-body { padding: 0 14px 14px; }
+.gl-text { padding: 11px 13px; border-radius: 14px; font-size: 13px; line-height: 1.5; max-height: 300px; }
+.gl-text h1, .gl-text h2, .gl-text h3 { font-size: 13.5px; }
+.gl-text pre { padding: 10px 12px; border-radius: 11px; }
+.gl-text code { font-size: 11.5px; }
+.gl-foot { margin-top: 10px; gap: 6px; }
+.gl-cap { font-size: 11px; }
+.gl-btn { height: 28px; padding: 0 11px; border-radius: 14px; font-size: 12px; }
+.gl-btn svg { width: 12px; height: 12px; }
