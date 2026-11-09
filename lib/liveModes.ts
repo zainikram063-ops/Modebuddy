@@ -1,5 +1,5 @@
 // Made from your BUILTIN_MODES in lib/modes.ts so Live uses ModeBuddy's real mode colors.
-export type LiveMode = { id: "buddy" | "code" | "study"; name: string; color: string; bg: string; icon: string };
+export type LiveMode = { id: string; name: string; color: string; bg: string; icon: string };
 
 export const LIVE_MODES: Record<LiveMode["id"], LiveMode> = {
   "buddy": {

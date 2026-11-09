@@ -86,7 +86,7 @@ export async function POST(req: Request) {
     if (!auth) return Response.json({ error: "Please sign in to ModeBuddy first." }, { status: 401 });
     if (await overLimit(auth).catch(() => false)) return Response.json({ error: "You have used all of today's Live questions. They reset at midnight (UTC)." }, { status: 429 });
 
-    const { audio, image, history } = (await req.json().catch(() => ({}))) as { audio?: string; image?: string | null; history?: Turn[] };
+    const { audio, image, history, modes, modeId } = (await req.json().catch(() => ({}))) as { audio?: string; image?: string | null; history?: Turn[]; modes?: { name: string; apps?: string[]; sites?: string[] }[]; modeId?: string };
     if (!audio) return Response.json({ error: "I did not catch any audio. Try again." }, { status: 400 });
 
     const past = (Array.isArray(history) ? history : []).slice(-4).flatMap((t) => [
@@ -98,8 +98,14 @@ export async function POST(req: Request) {
     parts.push({ inlineData: { mimeType: "audio/wav", data: audio } });
     parts.push({ text: image ? "This is my screen right now. My request is in the audio." : "My request is in the audio. No screenshot was available." });
 
+    let extra = "";
+    if (Array.isArray(modes) && modes.length) extra += "\n\nThe user also has custom modes. If one fits what is on screen better, set MODE to its exact name:\n" + modes.slice(0, 20).map((m) => `- ${String(m.name).slice(0, 40)} (apps: ${(m.apps || []).slice(0, 8).join(", ")}; sites: ${(m.sites || []).slice(0, 8).join(", ")})`).join("\n");
+    if (modeId) {
+      const { data: cm } = await auth.sb.from("mode_apps").select("name, prompt").eq("mode_id", String(modeId)).maybeSingle();
+      if (cm?.prompt) extra += `\n\nRight now you are the user's "${cm.name}" mode. Follow it:\n${String(cm.prompt).slice(0, 2000)}`;
+    }
     const base = {
-      systemInstruction: { parts: [{ text: SYSTEM }] },
+      systemInstruction: { parts: [{ text: SYSTEM + extra }] },
       contents: [...past, { role: "user", parts }],
       generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
     };

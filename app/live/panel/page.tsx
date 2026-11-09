@@ -94,6 +94,7 @@ export default function LivePanel() {
   const [copied, setCopied] = useState(false);
   const [follow, setFollow] = useState(false);
   const [mode, setMode] = useState<LiveMode>(LIVE_MODES.buddy);
+  const [custom, setCustom] = useState<{ id: string; name: string; color: string; apps: string[]; sites: string[] }[]>([]);
   const [heard, setHeard] = useState("");
   const [latchH, setLatchH] = useState(88);
   const [leaving, setLeaving] = useState(false);
@@ -189,7 +190,7 @@ export default function LivePanel() {
     setDone(false);
     try {
       const pic = image ? await shrink(image).catch(() => image) : null;
-      const res = await fetch("/api/live", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ audio, image: pic, history: turns.current.slice(-4) }), signal: ac.signal });
+      const res = await fetch("/api/live", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ audio, image: pic, history: turns.current.slice(-4), modes: custom, modeId: custom.some((m) => m.id === mode.id) ? mode.id : undefined }), signal: ac.signal });
       const type = res.headers.get("content-type") || "";
       if (type.includes("text/html")) throw new Error("Please sign in to ModeBuddy first.");
       if (!res.ok || !res.body) {
@@ -273,7 +274,11 @@ export default function LivePanel() {
         setLeaving(false);
         go("idle");
       } else if (e.type === "context") {
-        if (e.app) setMode(liveMode(appMode(e.app)));
+        if (e.app) {
+          const a = e.app.toLowerCase();
+          const c = custom.find((m) => (m.apps || []).some((x) => a.includes(x.toLowerCase()) || x.toLowerCase().includes(a)));
+          setMode(c ? { id: c.id, name: c.name, color: c.color, bg: "", icon: "" } : liveMode(appMode(e.app)));
+        }
       } else if (e.type === "spoke") {
         setSpeaking(false);
       }
@@ -282,14 +287,21 @@ export default function LivePanel() {
 
   useEffect(() => {
     document.documentElement.classList.add("lv-panel-root");
+    const load = () => fetch("/api/live/modes").then((r) => r.json()).then((j) => setCustom(Array.isArray(j.modes) ? j.modes : [])).catch(() => {});
+    load();
+    const iv = window.setInterval(load, 10 * 60 * 1000);
     const off = desktop()?.live?.onEvent((e) => handler.current(e));
-    return () => { off?.(); };
+    return () => { off?.(); window.clearInterval(iv); };
   }, []);
 
   const p = parse(raw, done);
   const isCard = view === "answer" || view === "error";
 
-  useEffect(() => { if (p.mode) setMode(liveMode(p.mode)); }, [p.mode]);
+  useEffect(() => {
+    if (!p.mode) return;
+    const c = custom.find((m) => m.name.toLowerCase().replace(/[^a-z]/g, "") === p.mode);
+    setMode((cur) => c ? { id: c.id, name: c.name, color: c.color, bg: "", icon: "" } : p.mode === "buddy" && custom.some((m) => m.id === cur.id) ? cur : liveMode(p.mode));
+  }, [p.mode, custom]);
 
   // Measure the content so the latch grows smoothly to fit it
   useLayoutEffect(() => {
