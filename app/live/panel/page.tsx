@@ -81,6 +81,10 @@ function onColor(hex: string) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? "#0a0a0a" : "#ffffff";
 }
 
+const appMode = (app: string) =>
+  /cursor|code|xcode|terminal|iterm|warp|studio|intellij|pycharm|webstorm|sublime|zed|nova|docker|github/i.test(app) ? "code"
+  : /notion|notes|obsidian|goodnotes|notability|preview|books|anki|quizlet|word|pages|onenote|craft|bear|classroom/i.test(app) ? "study" : "buddy";
+
 export default function LivePanel() {
   const [view, setView] = useState<View>("idle");
   const [raw, setRaw] = useState("");
@@ -268,6 +272,8 @@ export default function LivePanel() {
         setSpeaking(false);
         setLeaving(false);
         go("idle");
+      } else if (e.type === "context") {
+        if (e.app) setMode(liveMode(appMode(e.app)));
       } else if (e.type === "spoke") {
         setSpeaking(false);
       }

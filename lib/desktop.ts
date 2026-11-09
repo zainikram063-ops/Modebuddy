@@ -1,6 +1,6 @@
 export type LivePerms = { mic: string; screen: string; access: boolean };
 export type LiveState = { enabled: boolean; hookOn: boolean; perms: LivePerms };
-export type LiveEvent = { type: "start" | "stop" | "cancel" | "hide" | "spoke"; image?: string | null };
+export type LiveEvent = { type: "start" | "stop" | "cancel" | "hide" | "spoke" | "context"; image?: string | null; app?: string };
 
 type DesktopBridge = {
   desktop: true;

@@ -305,6 +305,8 @@ function beginListen() {
   showPanel(display);
   panel.webContents.send("live", { type: "start" });
   shot = capture(display);
+  pointStart(display);
+  sendContext();
   pulse(true);
   clearTimeout(watchdog);
   watchdog = setTimeout(() => { if (listening) endListen(); }, 60000);
@@ -315,7 +317,8 @@ async function endListen() {
   listening = false;
   clearTimeout(watchdog);
   pulse(false);
-  const image = await shot;
+  const rect = await pointEnd();
+  const image = crop(await shot, rect);
   if (panel && !panel.isDestroyed()) panel.webContents.send("live", { type: "stop", image });
 }
 
@@ -324,12 +327,13 @@ function cancelListen() {
   listening = false;
   clearTimeout(watchdog);
   pulse(false);
+  pointEnd();
   if (panel && !panel.isDestroyed()) panel.webContents.send("live", { type: "cancel" });
 }
 
 async function capture(display) {
   try {
-    const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 1600, height: 1600 } });
+    const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 2880, height: 2880 } });
     const src = sources.find((s) => String(s.display_id) === String(display.id)) || sources[0];
     return src && !src.thumbnail.isEmpty() ? src.thumbnail.toJPEG(72).toString("base64") : null;
   } catch {
@@ -381,3 +385,45 @@ ipcMain.handle("live:speak", (e, text) => { if (fromUs(e)) speak(text); });
 ipcMain.handle("live:stopSpeaking", (e) => { if (fromUs(e)) stopSpeaking(); });
 ipcMain.handle("live:open", (e) => { if (fromUs(e)) openLiveSettings(); });
 ipcMain.handle("app:restart", (e) => { if (fromUs(e)) { app.relaunch(); app.exit(0); } });
+
+// ---------- Point at it: hold ⌘⌥ and drag a box ----------
+let pointer = null, pointDisplay = null;
+const POINTER_HTML = "data:text/html;charset=utf-8," + encodeURIComponent(`<html><body style="margin:0;height:100vh;cursor:crosshair;background:rgba(0,0,0,0.002)"><div id="b" style="position:fixed;display:none;border:2px solid #c4ff2e;border-radius:10px;background:rgba(196,255,46,.08);box-shadow:0 0 0 9999px rgba(0,0,0,.28)"></div><script>let s=null;window.__rect=null;const b=document.getElementById("b");addEventListener("mousedown",e=>{s=[e.clientX,e.clientY];window.__rect=null;});addEventListener("mousemove",e=>{if(!s)return;const x=Math.min(s[0],e.clientX),y=Math.min(s[1],e.clientY),w=Math.abs(e.clientX-s[0]),h=Math.abs(e.clientY-s[1]);Object.assign(b.style,{display:"block",left:x+"px",top:y+"px",width:w+"px",height:h+"px"});window.__rect=w>12&&h>12?{x,y,w,h}:null;});addEventListener("mouseup",()=>{s=null;});</script></body></html>`);
+
+function pointStart(display) {
+  pointDisplay = display;
+  if (!pointer || pointer.isDestroyed()) {
+    pointer = new BrowserWindow({ show: false, frame: false, transparent: true, backgroundColor: "#00000000", hasShadow: false, skipTaskbar: true, resizable: false, movable: false, focusable: false, acceptFirstMouse: true, enableLargerThanScreen: true, type: "panel" });
+    pointer.setAlwaysOnTop(true, "screen-saver");
+    pointer.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+    pointer.setContentProtection(true);
+  }
+  pointer.setBounds(display.bounds);
+  pointer.loadURL(POINTER_HTML);
+  pointer.showInactive();
+  if (panel && !panel.isDestroyed()) panel.moveTop();
+}
+
+async function pointEnd() {
+  if (!pointer || pointer.isDestroyed() || !pointer.isVisible()) return null;
+  const rect = await pointer.webContents.executeJavaScript("window.__rect").catch(() => null);
+  pointer.hide();
+  return rect;
+}
+
+function crop(b64, rect) {
+  if (!b64 || !rect || !pointDisplay) return b64;
+  try {
+    const img = nativeImage.createFromBuffer(Buffer.from(b64, "base64"));
+    const k = img.getSize().width / pointDisplay.bounds.width;
+    return img.crop({ x: Math.round(rect.x * k), y: Math.round(rect.y * k), width: Math.round(rect.w * k), height: Math.round(rect.h * k) }).toJPEG(85).toString("base64");
+  } catch { return b64; }
+}
+
+// ---------- Which app is open (for instant modes) ----------
+function sendContext() {
+  require("child_process").execFile("/bin/sh", ["-c", "lsappinfo info -only name \"$(lsappinfo front)\""], { timeout: 1500 }, (_err, out) => {
+    const m = /"LSDisplayName"="([^"]+)"/.exec(String(out || ""));
+    if (m && panel && !panel.isDestroyed()) panel.webContents.send("live", { type: "context", app: m[1] });
+  });
+}
