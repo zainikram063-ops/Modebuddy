@@ -67,7 +67,7 @@ function parse(raw: string, final: boolean) {
   const get = (k: string) => (head.match(new RegExp("^\\s*" + k + "\\s*:\\s*(.*)$", "mi")) || [])[1]?.trim() || "";
   let answer = cut >= 0 ? raw.slice(cut).replace(/^-{3,}\s*\n?/, "") : "";
   if (cut < 0 && final) answer = raw.replace(/^\s*(HEARD|MODE|SAY)\s*:.*$/gim, "").trim();
-  return { heard: get("HEARD"), mode: get("MODE").toLowerCase().replace(/[^a-z]/g, ""), say: get("SAY"), answer };
+  return { heard: get("HEARD"), mode: get("MODE").toLowerCase().replace(/[^a-z]/g, ""), say: get("SAY"), does: get("DO"), answer };
 }
 
 const pasteable = (md: string) => ((md.match(/```[^\n]*\n([\s\S]*?)```/) || [])[1] ?? md).trim();
@@ -114,6 +114,44 @@ export default function LivePanel() {
   const api = () => desktop()?.live;
   const go = (v: View) => { viewRef.current = v; setView(v); };
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  type Step = { do: string; app?: string; url?: string; text?: string; keys?: string; target?: string; ms?: number; x?: number; y?: number };
+  type Actor = { act: (s: Step) => Promise<{ ok: boolean; error?: string }>; shot: () => Promise<string | null> };
+  const [steps, setSteps] = useState<{ label: string; state: string }[]>([]);
+  const stopRun = useRef(false);
+  const installed = useRef<string[]>([]);
+  const actor = () => (window as unknown as { modebuddyAct?: Actor }).modebuddyAct;
+  const label = (s: Step) =>
+    s.do === "open_app" ? `Open ${s.app}`
+    : s.do === "open_url" ? `Go to ${String(s.url || "").replace(/^https?:\/\/(www\.)?/, "").slice(0, 42)}`
+    : s.do === "type" ? `Type “${String(s.text || "").slice(0, 36)}${String(s.text || "").length > 36 ? "…" : ""}”`
+    : s.do === "key" ? `Press ${s.keys}`
+    : s.do === "click" ? `Click ${s.target}`
+    : "Wait";
+
+  // ModeBuddy does the steps on your Mac, one by one
+  async function run(list: Step[]) {
+    const A = actor();
+    if (!A) { setErr("Update the ModeBuddy Mac app so it can do things for you."); go("error"); return; }
+    stopRun.current = false;
+    setSteps(list.map((s) => ({ label: label(s), state: "todo" })));
+    const mark = (i: number, state: string) => setSteps((cur) => cur.map((x, j) => (j === i ? { ...x, state } : x)));
+    for (let i = 0; i < list.length && !stopRun.current; i++) {
+      mark(i, "doing");
+      let s = list[i];
+      if (s.do === "click" && s.target) {
+        const img = await A.shot().catch(() => null);
+        const r = img
+          ? await fetch("/api/live/locate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: await shrink(img).catch(() => img), target: s.target }) }).then((x) => x.json()).catch(() => null)
+          : null;
+        if (!r || typeof r.x !== "number") { mark(i, "fail"); break; }
+        s = { ...s, x: r.x, y: r.y };
+      }
+      const res = await A.act(s).catch(() => ({ ok: false }));
+      mark(i, res.ok ? "done" : "fail");
+      if (!res.ok && s.do === "open_app") break;
+    }
+    await A.act({ do: "done" }).catch(() => ({ ok: false }));
+  }
 
   // Speak with the ElevenLabs / Fish Audio voice, or the Mac voice if that is not set up
   function talk(t: string) {
@@ -210,7 +248,7 @@ export default function LivePanel() {
     setDone(false);
     try {
       const pic = image ? await shrink(image).catch(() => image) : null;
-      const res = await fetch("/api/live", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ audio, image: pic, history: turns.current.slice(-4), modes: custom, modeId: custom.some((m) => m.id === mode.id) ? mode.id : undefined }), signal: ac.signal });
+      const res = await fetch("/api/live", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ audio, image: pic, history: turns.current.slice(-4), modes: custom, modeId: custom.some((m) => m.id === mode.id) ? mode.id : undefined, installed: installed.current }), signal: ac.signal });
       const type = res.headers.get("content-type") || "";
       if (type.includes("text/html")) throw new Error("Please sign in to ModeBuddy first.");
       if (!res.ok || !res.body) {
@@ -234,6 +272,9 @@ export default function LivePanel() {
       setDone(true);
       const p = parse(text, true);
       last.current = { q: p.heard || "(question)", a: p.answer || text };
+      if (p.does) {
+        try { const list = JSON.parse(p.does); if (Array.isArray(list) && list.length) run(list.slice(0, 15)); } catch { /* not valid steps */ }
+      }
       if (!said && p.say) talk(p.say);
     } catch (x) {
       if (ac.signal.aborted && ac.signal.reason !== "timeout") return;
@@ -260,6 +301,8 @@ export default function LivePanel() {
         abort.current?.abort();
         lastAsk.current = null;
         hush();
+        stopRun.current = true;
+        setSteps([]);
         setSpeaking(false);
         const had = viewRef.current === "answer" && last.current;
         if (had && last.current) turns.current.push(last.current);
@@ -291,11 +334,14 @@ export default function LivePanel() {
         setRaw("");
         setErr("");
         setHeard("");
+        stopRun.current = true;
+        setSteps([]);
         hush();
         setSpeaking(false);
         setLeaving(false);
         go("idle");
       } else if (e.type === "context") {
+        if (e.apps) installed.current = e.apps;
         if (e.app) {
           const a = e.app.toLowerCase();
           const c = custom.find((m) => (m.apps || []).some((x) => a.includes(x.toLowerCase()) || x.toLowerCase().includes(a)));
@@ -359,7 +405,7 @@ export default function LivePanel() {
         <i className="gl-glint" key={isCard ? "a" : "b"} />
         <div ref={innerRef} className="gl-inner">
           <div className="gl-row">
-            <div className="gl-logo"><Ghost state={view} /></div>
+            <div className="gl-logo"><Ghost state={steps.some((s) => s.state === "doing") ? "thinking" : view} /></div>
             <div className="gl-field">
               <p className={words.length ? "" : "ph"}>
                 {words.length
@@ -377,9 +423,9 @@ export default function LivePanel() {
           {isCard && (
             <div className="gl-body">
               <div className={`gl-text ${view === "error" ? "err" : ""}`}>
-                {view === "error" ? <p>{err}</p> : p.answer ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{p.answer}</ReactMarkdown> : <p className="gl-dim">Writing…</p>}
+                {view === "error" ? <p>{err}</p> : steps.length ? <ol className="gl-steps">{steps.map((s, i) => <li key={i} className={s.state}>{s.label}</li>)}</ol> : p.answer ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{p.answer}</ReactMarkdown> : <p className="gl-dim">Writing…</p>}
               </div>
-              {(view === "error" ? !!lastAsk.current : done) && (
+              {(view === "error" ? !!lastAsk.current : done && !steps.length) && (
                 <div className="gl-foot">
                   <span className="gl-cap">{view === "error" ? "Esc to close" : "⌘⌥ to follow up"}</span>
                   {view === "answer" && <button className="gl-btn" onClick={voice}><Icon name={speaking ? "stop" : "speaker"} />{speaking ? "Stop" : "Read"}</button>}

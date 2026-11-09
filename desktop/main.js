@@ -424,6 +424,93 @@ function crop(b64, rect) {
 function sendContext() {
   require("child_process").execFile("/bin/sh", ["-c", "lsappinfo info -only name \"$(lsappinfo front)\""], { timeout: 1500 }, (_err, out) => {
     const m = /"LSDisplayName"="([^"]+)"/.exec(String(out || ""));
-    if (m && panel && !panel.isDestroyed()) panel.webContents.send("live", { type: "context", app: m[1] });
+    if (m && panel && !panel.isDestroyed()) panel.webContents.send("live", { type: "context", app: m[1], apps: mbInstalled() });
   });
 }
+
+// ---------- Do it: ModeBuddy uses your Mac ----------
+const mbCp = require("child_process");
+const mbSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const mbSh = (cmd, args, timeout = 8000) => new Promise((res) => mbCp.execFile(cmd, args, { timeout }, (err, out) => res({ err, out: String(out || "") })));
+const mbOk = (e) => { try { return /^https:\/\/modebuddy\.vercel\.app$|^http:\/\/localhost(:\d+)?$/.test(new URL(e.senderFrame.url).origin); } catch { return false; } };
+let mbApps = null;
+function mbInstalled() {
+  if (mbApps) return mbApps;
+  const fs = require("fs"), path = require("path");
+  const dirs = ["/Applications", "/System/Applications", "/System/Applications/Utilities", path.join(app.getPath("home"), "Applications")];
+  mbApps = [...new Set(dirs.flatMap((d) => { try { return fs.readdirSync(d).filter((n) => n.endsWith(".app")).map((n) => n.slice(0, -4)); } catch { return []; } }))].slice(0, 300);
+  return mbApps;
+}
+async function mbFront() {
+  const r = await mbSh("/bin/sh", ["-c", "lsappinfo info -only name \"$(lsappinfo front)\""], 1500);
+  return ((/"LSDisplayName"="([^"]+)"/.exec(r.out) || [])[1] || "").toLowerCase();
+}
+async function mbWaitFront(name, ms = 7000) {
+  const want = String(name).toLowerCase().replace(/\.app$/, "");
+  for (const t = Date.now(); Date.now() - t < ms; await mbSleep(150)) {
+    const f = await mbFront();
+    if (f && (f.includes(want) || want.includes(f))) { await mbSleep(500); return true; }
+  }
+  return false;
+}
+const MB_KEYS = { enter: 36, return: 36, tab: 48, space: 49, esc: 53, escape: 53, delete: 51, backspace: 51, up: 126, down: 125, left: 123, right: 124 };
+const MB_MODS = { cmd: "command down", command: "command down", shift: "shift down", alt: "option down", option: "option down", opt: "option down", ctrl: "control down", control: "control down" };
+function mbKeys(combo) {
+  const parts = String(combo).toLowerCase().split("+").map((s) => s.trim()).filter(Boolean);
+  const key = parts.pop() || "";
+  const mods = parts.map((m) => MB_MODS[m]).filter(Boolean);
+  const act = MB_KEYS[key] != null ? "key code " + MB_KEYS[key] : 'keystroke "' + key.replace(/["\\]/g, "") + '"';
+  return mbSh("osascript", ["-e", 'tell application "System Events" to ' + act + (mods.length ? " using {" + mods.join(", ") + "}" : "")]);
+}
+async function mbType(text) {
+  const clip = require("electron").clipboard;
+  for (const c of String(text).match(/[\s\S]{1,400}/g) || []) { clip.writeText(c); await mbSleep(40); await mbKeys("cmd+v"); await mbSleep(110); }
+}
+function mbClick(x, y) {
+  const js = 'ObjC.import("CoreGraphics");var p=$.CGEventGetLocation($.CGEventCreate(null));var t={x:' + x + ',y:' + y + '};function e(k){$.CGEventPost(0,$.CGEventCreateMouseEvent(null,k,t,0));}e(5);delay(0.03);e(1);delay(0.04);e(2);delay(0.05);$.CGWarpMouseCursorPosition(p);';
+  return mbSh("osascript", ["-l", "JavaScript", "-e", js]);
+}
+
+// The ghost that flies around and does the clicking
+let mbGhost = null, mbGhostD = null;
+const MB_GHOST = "data:text/html;charset=utf-8," + encodeURIComponent('<html><head><style>html,body{margin:0;background:transparent;overflow:hidden}#g{position:fixed;left:0;top:0;width:46px;height:46px;margin:-8px 0 0 -8px;transform:translate(50vw,14px);transition:transform .55s cubic-bezier(.2,.9,.25,1.04);filter:drop-shadow(0 8px 14px rgba(0,0,0,.35));will-change:transform}#g svg{width:46px;height:46px;transform-origin:50% 90%;transition:transform .15s}#g.tap svg{transform:scale(.8)}#g.type svg{animation:b .3s ease-in-out infinite alternate}@keyframes b{to{transform:translateY(-3px) rotate(-5deg)}}#r{position:fixed;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:2px solid #c4ff2e;opacity:0;pointer-events:none}#r.go{animation:r .45s ease-out}@keyframes r{from{transform:scale(.3);opacity:1}to{transform:scale(1.6);opacity:0}}#g.bye{opacity:0;transition:transform .3s,opacity .3s}</style></head><body><div id="r"></div><div id="g"><svg viewBox="0 0 100 100"><path d="M23.75 43A26.25 26.25 0 0 1 76.25 43V76Q69.69 84 63.13 76Q56.56 84 50 76Q43.44 84 36.88 76Q30.31 84 23.75 76Z" fill="#fbfeea" stroke="#4c5038" stroke-width="4" stroke-linejoin="round"/><ellipse cx="41.25" cy="46" rx="3" ry="5.4" fill="#2a2c20"/><ellipse cx="58.75" cy="46" rx="3" ry="5.4" fill="#2a2c20"/></svg></div><script>var g=document.getElementById("g"),r=document.getElementById("r");function go(x,y,m){g.className="";g.style.transform="translate("+x+"px,"+y+"px)";setTimeout(function(){if(m==="click"){g.className="tap";r.style.left=x+"px";r.style.top=y+"px";r.className="";void r.offsetWidth;r.className="go";setTimeout(function(){g.className=""},160)}else if(m==="type"){g.className="type"}},560)}function bye(){g.className="bye"}</script></body></html>');
+function mbGhostOn(d) {
+  if (!mbGhost || mbGhost.isDestroyed()) {
+    mbGhost = new BrowserWindow({ show: false, frame: false, transparent: true, backgroundColor: "#00000000", hasShadow: false, skipTaskbar: true, focusable: false, resizable: false, movable: false, enableLargerThanScreen: true, type: "panel" });
+    mbGhost.setIgnoreMouseEvents(true);
+    mbGhost.setAlwaysOnTop(true, "screen-saver");
+    mbGhost.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+    mbGhost.setContentProtection(true);
+    mbGhostD = null;
+  }
+  if (mbGhostD !== d.id) { mbGhost.setBounds(d.bounds); mbGhostD = d.id; return mbGhost.loadURL(MB_GHOST).then(() => mbGhost.showInactive()); }
+  if (!mbGhost.isVisible()) mbGhost.showInactive();
+  return Promise.resolve();
+}
+async function mbGhostTo(x, y, mode) {
+  const d = screen.getDisplayNearestPoint({ x: Math.round(x), y: Math.round(y) });
+  await mbGhostOn(d);
+  await mbGhost.webContents.executeJavaScript("go(" + Math.round(x - d.bounds.x) + "," + Math.round(y - d.bounds.y) + "," + JSON.stringify(mode || "") + ")").catch(() => {});
+  await mbSleep(mode === "click" ? 720 : 600);
+}
+function mbGhostOff() {
+  if (!mbGhost || mbGhost.isDestroyed()) return;
+  mbGhost.webContents.executeJavaScript("bye()").catch(() => {});
+  setTimeout(() => { if (mbGhost && !mbGhost.isDestroyed()) { mbGhost.hide(); mbGhostD = null; } }, 350);
+}
+
+async function mbAct(s) {
+  const b = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).bounds;
+  switch (s.do) {
+    case "open_app": await mbGhostTo(b.x + b.width / 2, b.y + b.height - 36, "click"); await mbSh("open", ["-a", String(s.app)]); return { ok: await mbWaitFront(s.app) };
+    case "open_url": await mbGhostTo(b.x + b.width / 2, b.y + 70, "click"); await mbSh("open", s.app ? ["-a", String(s.app), String(s.url)] : [String(s.url)]); if (s.app) await mbWaitFront(s.app); await mbSleep(1400); return { ok: true };
+    case "type": await mbGhostTo(b.x + b.width / 2, b.y + b.height * 0.6, "type"); await mbType(s.text || ""); return { ok: true };
+    case "key": await mbKeys(s.keys || ""); await mbSleep(300); return { ok: true };
+    case "click": { const x = b.x + Number(s.x) * b.width, y = b.y + Number(s.y) * b.height; await mbGhostTo(x, y, "click"); await mbClick(Math.round(x), Math.round(y)); await mbSleep(450); return { ok: true }; }
+    case "wait": await mbSleep(Math.min(8000, Number(s.ms) || 800)); return { ok: true };
+    case "done": mbGhostOff(); return { ok: true };
+  }
+  return { ok: false, error: "unknown step" };
+}
+ipcMain.handle("live:act", async (e, s) => { if (!mbOk(e)) return { ok: false }; try { return await mbAct(s || {}); } catch (x) { return { ok: false, error: String(x) }; } });
+ipcMain.handle("live:shot", async (e) => { if (!mbOk(e)) return null; return capture(screen.getDisplayNearestPoint(screen.getCursorScreenPoint())).catch(() => null); });

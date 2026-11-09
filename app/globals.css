@@ -2276,3 +2276,16 @@ html.lv-panel-root, html.lv-panel-root body { background: transparent !important
 .gl-cap { font-size: 11px; }
 .gl-btn { height: 28px; padding: 0 11px; border-radius: 14px; font-size: 12px; }
 .gl-btn svg { width: 12px; height: 12px; }
+
+/* ===== Live steps ===== */
+.gl-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.gl-steps li { display: flex; align-items: center; gap: 9px; font-size: 13px; color: rgba(40,34,28,.5); transition: color .2s; animation: gl-pop .4s var(--spring) backwards; }
+.gl-steps li::before { content: ""; width: 14px; height: 14px; flex: none; box-sizing: border-box; border-radius: 50%; border: 1.5px solid currentColor; opacity: .5; }
+.gl-steps li.doing { color: #1d1b18; font-weight: 600; }
+.gl-steps li.doing::before { opacity: 1; border-color: var(--a); border-top-color: transparent; animation: gl-rot .7s linear infinite; }
+.gl-steps li.done { color: #1d1b18; }
+.gl-steps li.done::before { opacity: 1; border: 0; background: var(--a) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m5 12.5 4.5 4.5 9.5-10' fill='none' stroke='%23000' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 9px no-repeat; }
+.gl-steps li.fail { color: #b3261e; }
+.gl-latch[data-mode="code"] .gl-steps li { color: rgba(255,255,255,.45); }
+.gl-latch[data-mode="code"] .gl-steps li.doing, .gl-latch[data-mode="code"] .gl-steps li.done { color: #f1f1ee; }
+@keyframes gl-rot { to { transform: rotate(1turn); } }

@@ -32,7 +32,15 @@ Rules:
 - MODE is code for coding apps, terminals and developer websites, study for notes, homework and learning, otherwise buddy.
 - Be concise and practical. Use short paragraphs or bullet points.
 - If they want something they can paste (a prompt, code, a message, a fix), put exactly that text in ONE fenced code block.
-- If the audio is silent or unclear, set HEARD to (nothing) and kindly ask them to hold Command and Option and try again.`;
+- If the audio is silent or unclear, set HEARD to (nothing) and kindly ask them to hold Command and Option and try again.
+
+If the user asks you to DO something on their Mac (open apps or websites, search, write and send a prompt, click something), add a DO line right after SAY with a JSON array of steps, all on ONE line, for example:
+DO: [{"do":"open_app","app":"Claude"},{"do":"type","text":"the full prompt"},{"do":"key","keys":"enter"},{"do":"open_url","app":"Google Chrome","url":"https://www.google.com/search?q=modebuddy.vercel.app"}]
+Steps: open_app {app}, open_url {url, app optional}, type {text}, key {keys like "enter", "tab", "cmd+t", "cmd+l", "cmd+n"}, click {target: what to click in a few words}, wait {ms}.
+- Use exact app names from the installed apps list. Search the web with open_url and a Google search link. Only use click when there is no keyboard way.
+- When asked to write a prompt, put a complete, high quality prompt in the type step.
+- Never delete files, buy things, or send emails or messages unless the user clearly asked for it.
+- With DO, keep SAY short (like "On it, opening Claude now.") and after --- list the steps as a few short bullet points.`;
 
 type Turn = { q?: string; a?: string };
 
@@ -86,7 +94,7 @@ export async function POST(req: Request) {
     if (!auth) return Response.json({ error: "Please sign in to ModeBuddy first." }, { status: 401 });
     if (await overLimit(auth).catch(() => false)) return Response.json({ error: "You have used all of today's Live questions. They reset at midnight (UTC)." }, { status: 429 });
 
-    const { audio, image, history, modes, modeId } = (await req.json().catch(() => ({}))) as { audio?: string; image?: string | null; history?: Turn[]; modes?: { name: string; apps?: string[]; sites?: string[] }[]; modeId?: string };
+    const { audio, image, history, modes, modeId, installed } = (await req.json().catch(() => ({}))) as { audio?: string; image?: string | null; history?: Turn[]; modes?: { name: string; apps?: string[]; sites?: string[] }[]; modeId?: string; installed?: string[] };
     if (!audio) return Response.json({ error: "I did not catch any audio. Try again." }, { status: 400 });
 
     const past = (Array.isArray(history) ? history : []).slice(-4).flatMap((t) => [
@@ -96,7 +104,7 @@ export async function POST(req: Request) {
     const parts: Record<string, unknown>[] = [];
     if (image) parts.push({ inlineData: { mimeType: "image/jpeg", data: image } });
     parts.push({ inlineData: { mimeType: "audio/wav", data: audio } });
-    parts.push({ text: image ? "This is my screen right now. My request is in the audio." : "My request is in the audio. No screenshot was available." });
+    parts.push({ text: (image ? "This is my screen right now. My request is in the audio." : "My request is in the audio. No screenshot was available.") + (Array.isArray(installed) && installed.length ? "\nApps installed on this Mac: " + installed.slice(0, 250).join(", ") : "") });
 
     let extra = "";
     if (Array.isArray(modes) && modes.length) extra += "\n\nThe user also has custom modes. If one fits what is on screen better, set MODE to its exact name:\n" + modes.slice(0, 20).map((m) => `- ${String(m.name).slice(0, 40)} (apps: ${(m.apps || []).slice(0, 8).join(", ")}; sites: ${(m.sites || []).slice(0, 8).join(", ")})`).join("\n");

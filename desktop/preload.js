@@ -25,3 +25,10 @@ contextBridge.exposeInMainWorld("modebuddy", {
     },
   },
 });
+
+// ---------- Do it: let the panel ask the app to use the Mac ----------
+const { contextBridge: mbBridge, ipcRenderer: mbIpc } = require("electron");
+mbBridge.exposeInMainWorld("modebuddyAct", {
+  act: (step) => mbIpc.invoke("live:act", step),
+  shot: () => mbIpc.invoke("live:shot"),
+});
