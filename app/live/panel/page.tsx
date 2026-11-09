@@ -32,8 +32,11 @@ function wav(chunks: Float32Array[]) {
   v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
   v.setUint32(24, RATE, true); v.setUint32(28, RATE * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
   w(36, "data"); v.setUint32(40, n * 2, true);
+  let peak = 0;
+  for (const c of chunks) for (let i = 0; i < c.length; i += 4) peak = Math.max(peak, Math.abs(c[i]));
+  const g = peak > 0.01 ? Math.min(6, 0.9 / peak) : 1;
   let o = 44;
-  for (const c of chunks) for (let i = 0; i < c.length; i++) { const s = Math.max(-1, Math.min(1, c[i])); v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true); o += 2; }
+  for (const c of chunks) for (let i = 0; i < c.length; i++) { const s = Math.max(-1, Math.min(1, c[i] * g)); v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true); o += 2; }
   return new Uint8Array(v.buffer);
 }
 
@@ -98,6 +101,7 @@ export default function LivePanel() {
   const [heard, setHeard] = useState("");
   const [latchH, setLatchH] = useState(88);
   const [leaving, setLeaving] = useState(false);
+  const [micReady, setMicReady] = useState(false);
   const viewRef = useRef<View>("idle");
   const rec = useRef<Rec | null>(null);
   const starting = useRef<Promise<void> | null>(null);
@@ -125,30 +129,54 @@ export default function LivePanel() {
     : s.do === "open_url" ? `Go to ${String(s.url || "").replace(/^https?:\/\/(www\.)?/, "").slice(0, 42)}`
     : s.do === "type" ? `Type “${String(s.text || "").slice(0, 36)}${String(s.text || "").length > 36 ? "…" : ""}”`
     : s.do === "key" ? `Press ${s.keys}`
-    : s.do === "click" ? `Click ${s.target}`
+    : s.do === "click" ? `Click ${s.target || "there"}`
     : "Wait";
 
-  // ModeBuddy does the steps on your Mac, one by one
-  async function run(list: Step[]) {
+  // Match the app name the AI used to an app that is really installed
+  const realApp = (name?: string) => {
+    const n = String(name || "").toLowerCase().replace(/\.app$/, "").trim();
+    const list = installed.current;
+    if (!n) return "";
+    if (!list.length) return String(name);
+    return list.find((a) => a.toLowerCase() === n) || list.find((a) => a.toLowerCase().startsWith(n)) || list.find((a) => a.toLowerCase().includes(n)) || "";
+  };
+
+  // ModeBuddy works through the task, looking at the screen after each step
+  async function run(list: Step[], goal = "") {
     const A = actor();
     if (!A) { setErr("Update the ModeBuddy Mac app so it can do things for you."); go("error"); return; }
     stopRun.current = false;
-    setSteps(list.map((s) => ({ label: label(s), state: "todo" })));
-    const mark = (i: number, state: string) => setSteps((cur) => cur.map((x, j) => (j === i ? { ...x, state } : x)));
-    for (let i = 0; i < list.length && !stopRun.current; i++) {
-      mark(i, "doing");
-      let s = list[i];
-      if (s.do === "click" && s.target) {
-        const img = await A.shot().catch(() => null);
-        const r = img
-          ? await fetch("/api/live/locate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: await shrink(img).catch(() => img), target: s.target }) }).then((x) => x.json()).catch(() => null)
-          : null;
-        if (!r || typeof r.x !== "number") { mark(i, "fail"); break; }
-        s = { ...s, x: r.x, y: r.y };
-      }
+    const log: { label: string; state: string }[] = [];
+    const show = () => setSteps(log.map((x) => ({ ...x })));
+    const exec = async (raw: Step) => {
+      let s = raw;
+      if (s.do === "open_app") { const a = realApp(s.app); if (!a) return false; s = { ...s, app: a }; }
+      if (s.do === "open_url") { if (!/^https?:\/\//i.test(String(s.url || ""))) return false; s = { ...s, app: s.app ? realApp(s.app) || undefined : undefined }; }
+      if (s.do === "click") { if (typeof s.x !== "number" || typeof s.y !== "number") return false; if (s.x > 1 || s.y > 1) s = { ...s, x: s.x / 1000, y: s.y / 1000 }; }
       const res = await A.act(s).catch(() => ({ ok: false }));
-      mark(i, res.ok ? "done" : "fail");
-      if (!res.ok && s.do === "open_app") break;
+      return res.ok;
+    };
+    let queue: Step[] = list.filter((s) => s.do === "open_app" || s.do === "open_url").slice(0, 1);
+    let fails = 0;
+    for (let round = 0; round < 16 && !stopRun.current && fails < 3; round++) {
+      if (!queue.length) {
+        const img = await A.shot().catch(() => null);
+        if (stopRun.current) break;
+        const r = await fetch("/api/live/next", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ goal, plan: list, history: log, image: img ? await shrink(img).catch(() => img) : null, installed: installed.current }),
+        }).then((x) => x.json()).catch(() => null);
+        if (!r || r.done || !Array.isArray(r.steps) || !r.steps.length) break;
+        queue = r.steps.slice(0, 3);
+      }
+      const s = queue.shift() as Step;
+      log.push({ label: label(s), state: "doing" });
+      show();
+      const ok = await exec(s);
+      log[log.length - 1].state = ok ? "done" : "fail";
+      show();
+      if (ok) fails = 0; else { fails += 1; queue = []; }
     }
     await A.act({ do: "done" }).catch(() => ({ ok: false }));
   }
@@ -193,6 +221,7 @@ export default function LivePanel() {
     node.onaudioprocess = (ev) => {
       const d = ev.inputBuffer.getChannelData(0);
       chunks.push(new Float32Array(d));
+      if (chunks.length === 1) setMicReady(true);
       let sum = 0;
       for (let i = 0; i < d.length; i += 16) sum += d[i] * d[i];
       lvl.current = Math.min(1, Math.sqrt(sum / (d.length / 16)) * 6);
@@ -273,7 +302,7 @@ export default function LivePanel() {
       const p = parse(text, true);
       last.current = { q: p.heard || "(question)", a: p.answer || text };
       if (p.does) {
-        try { const list = JSON.parse(p.does); if (Array.isArray(list) && list.length) run(list.slice(0, 15)); } catch { /* not valid steps */ }
+        try { const list = JSON.parse(p.does); if (Array.isArray(list) && list.length) run(list.slice(0, 15), p.heard || ""); } catch { /* not valid steps */ }
       }
       if (!said && p.say) talk(p.say);
     } catch (x) {
@@ -313,9 +342,11 @@ export default function LivePanel() {
         setRaw("");
         setErr("");
         setCopied(false);
+        setMicReady(false);
         go("listening");
         starting.current = startRec();
       } else if (e.type === "stop") {
+        await new Promise((ok) => setTimeout(ok, 250));
         const r = await stopRec();
         if (!r) { setErr("ModeBuddy could not use the microphone. Open Live settings from the green dot and allow it."); go("error"); return; }
         if (r.secs < 0.5) { back(); return; }
@@ -410,8 +441,8 @@ export default function LivePanel() {
               <p className={words.length ? "" : "ph"}>
                 {words.length
                   ? words.map((wd, i) => <span key={i} className={view === "listening" && i >= words.length - 2 ? "tent" : ""}>{wd} </span>)
-                  : view === "listening" ? (follow ? "Ask a follow-up" : "Listening") : "…"}
-                {view === "listening" && <i className="gl-caret" />}
+                  : view === "listening" ? (!micReady ? "One sec…" : follow ? "Ask a follow-up" : "Listening") : "…"}
+                {view === "listening" && micReady && <i className="gl-caret" />}
               </p>
               {view === "thinking" && <span className="gl-dots"><i /><i /><i /></span>}
             </div>

@@ -32,6 +32,8 @@ Rules:
 - MODE is code for coding apps, terminals and developer websites, study for notes, homework and learning, otherwise buddy.
 - Be concise and practical. Use short paragraphs or bullet points.
 - If they want something they can paste (a prompt, code, a message, a fix), put exactly that text in ONE fenced code block.
+- HEARD must be exactly what they said, word for word. Never guess or add words. If a part is unclear, write [unclear] there.
+- If an important detail of a task is unclear, do not add a DO line. Ask them to repeat that part in SAY instead.
 - If the audio is silent or unclear, set HEARD to (nothing) and kindly ask them to hold Command and Option and try again.
 
 If the user asks you to DO something on their Mac (open apps or websites, search, write and send a prompt, click something), add a DO line right after SAY with a JSON array of steps, all on ONE line, for example:
@@ -115,7 +117,7 @@ export async function POST(req: Request) {
     const base = {
       systemInstruction: { parts: [{ text: SYSTEM + extra }] },
       contents: [...past, { role: "user", parts }],
-      generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
+      generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
     };
     const fast = { ...base, generationConfig: { ...base.generationConfig, thinkingConfig: { thinkingBudget: 0 } } };
 
