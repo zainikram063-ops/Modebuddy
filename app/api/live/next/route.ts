@@ -54,8 +54,8 @@ Installed apps: ${(installed || []).slice(0, 250).join(", ")}`;
         return Response.json({ done: !!o.done, steps: Array.isArray(o.steps) ? o.steps.slice(0, 3) : [] });
       } catch { /* try the next model */ }
     }
-    return Response.json({ done: true, steps: [] });
+    return Response.json({ error: "no answer" }, { status: 502 });
   } catch {
-    return Response.json({ done: true, steps: [] });
+    return Response.json({ error: "no answer" }, { status: 502 });
   }
 }

@@ -143,7 +143,7 @@ export default function LivePanel() {
     return list.find((a) => a.toLowerCase() === n) || list.find((a) => a.toLowerCase().startsWith(n)) || list.find((a) => a.toLowerCase().includes(n)) || "";
   };
 
-  // ModeBuddy works through the task, looking at the screen after each step
+  // ModeBuddy works through the task: follows the plan, and looks at the screen when it needs to
   async function run(list: Step[], goal = "") {
     const A = actor();
     if (!A) { setErr("Update the ModeBuddy Mac app so it can do things for you."); go("error"); return; }
@@ -160,19 +160,31 @@ export default function LivePanel() {
       if (s.do === "find") { const items = res.items || []; return { ok: items.length > 0, found: items.map((i) => (i.folder ? "folder: " : "file: ") + i.path) }; }
       return { ok: !!res.ok };
     };
-    let queue: Step[] = list.filter((s) => s.do === "open_app" || s.do === "open_url" || s.do === "find").slice(0, 1);
-    let fails = 0;
-    for (let round = 0; round < 16 && !stopRun.current && fails < 3; round++) {
-      if (!queue.length) {
+    // Look at the screen and ask what to do next (tries twice)
+    const check = async (): Promise<{ steps: Step[]; done: boolean } | null> => {
+      for (let tries = 0; tries < 2 && !stopRun.current; tries++) {
         const img = await A.shot().catch(() => null);
-        if (stopRun.current) break;
         const r = await fetch("/api/live/next", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ goal, plan: list, history: log, image: img ? await shrink(img).catch(() => img) : null, installed: installed.current }),
-        }).then((x) => x.json()).catch(() => null);
-        if (!r || r.done || !Array.isArray(r.steps) || !r.steps.length) break;
-        queue = r.steps.slice(0, 3);
+        }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+        if (r && (r.done || (Array.isArray(r.steps) && r.steps.length))) return { steps: r.done ? [] : r.steps.slice(0, 3), done: !!r.done };
+      }
+      return null;
+    };
+    // Follow the plan, but never trust a guessed file path: stop at open_path and search instead
+    let queue: Step[] = [];
+    for (const s of list) { if (s.do === "open_path") break; queue.push(s); if (s.do === "find") break; }
+    let fails = 0, checks = 0, fixing = false;
+    for (let round = 0; round < 24 && !stopRun.current && fails < 3; round++) {
+      if (!queue.length) {
+        if (checks++ >= 8) break;
+        const r = await check();
+        if (!r) { if (fixing) { log.push({ label: "Couldn't check the screen", state: "fail" }); show(); } break; }
+        if (r.done || !r.steps.length) break;
+        queue = r.steps;
+        fixing = true;
       }
       const s = queue.shift() as Step;
       log.push({ label: label(s), state: "doing" });
@@ -181,8 +193,10 @@ export default function LivePanel() {
       log[log.length - 1].state = r.ok ? "done" : "fail";
       if (r.found) log[log.length - 1].found = r.found;
       show();
-      if (r.ok) fails = 0; else { fails += 1; queue = []; }
+      if (!r.ok) { fails += 1; queue = []; continue; }
+      fails = 0;
       if (s.do === "find") queue = [];
+      if (s.do === "open_app" || s.do === "open_url" || s.do === "open_path") await new Promise((ok) => setTimeout(ok, 900));
     }
     await A.act({ do: "done" }).catch(() => ({ ok: false }));
   }
