@@ -14,6 +14,7 @@ Rules:
 - Look carefully at the screen before every step. Only do what the task asks, nothing extra.
 - To open a file or folder: first use find, then open the right result with open_path. Never guess or invent a path. Only use paths that find returned.
 - Pick the result that best matches what the user said: the exact name, and the place they mentioned (like Desktop or Downloads). If none match well, try find again with a different name.
+- If find returns nothing, use Spotlight: key cmd+space, type the name, wait 1000, then look at the results and click the right one (folders are listed under Folders).
 - If the right app is not in front, bring it to the front with open_app first.
 - Before typing, make sure the right text box is focused. Click it first if it is not.
 - Type the whole text in one type step. After typing, check that all of the text is in the right box before pressing enter. If it is missing, cut off or in the wrong place, fix it first.

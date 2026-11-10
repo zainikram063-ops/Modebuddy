@@ -508,7 +508,7 @@ async function mbAct(s) {
     case "key": await mbKeys(s.keys || ""); await mbSleep(300); return { ok: true };
     case "click": { const x = b.x + Number(s.x) * b.width, y = b.y + Number(s.y) * b.height; await mbGhostTo(x, y, "click"); await mbClick(Math.round(x), Math.round(y)); await mbSleep(450); return { ok: true }; }
     case "find": return await mbFind(s);
-    case "open_path": { const p = String(s.path || "").replace(/^~(?=\/|$)/, app.getPath("home")); if (!require("fs").existsSync(p)) return { ok: false, error: "not found" }; await mbGhostTo(b.x + b.width / 2, b.y + b.height - 36, "click"); await mbSh("open", s.app ? ["-a", String(s.app), p] : [p]); await mbSleep(900); return { ok: true }; }
+    case "open_path": { const p = String(s.path || "").replace(/^~(?=\/|$)/, app.getPath("home")); await mbGhostTo(b.x + b.width / 2, b.y + b.height - 36, "click"); const r = await mbSh("open", s.app ? ["-a", String(s.app), p] : [p]); await mbSleep(900); return { ok: !r.err, error: r.err ? "could not open it" : undefined }; }
     case "wait": await mbSleep(Math.min(8000, Number(s.ms) || 800)); return { ok: true };
     case "done": mbGhostOff(); return { ok: true };
   }
@@ -523,13 +523,18 @@ async function mbFind(q) {
   if (!name) return { ok: false, items: [] };
   const home = app.getPath("home");
   const kind = q.kind === "folder" ? ' && kMDItemContentType == "public.folder"' : q.kind === "file" ? ' && kMDItemContentType != "public.folder"' : "";
-  const r = await mbSh("mdfind", ["-onlyin", home, 'kMDItemFSName == "*' + name + '*"cd' + kind], 6000);
-  const fs = require("fs");
+  const r = await mbSh("mdfind", ["-onlyin", home, "-attr", "kMDItemContentType", 'kMDItemFSName == "*' + name + '*"cd' + kind], 6000);
   const n = name.toLowerCase();
-  const items = r.out.split("\n").filter((p) => p && !/\/(Library|node_modules|\.git|\.Trash)(\/|$)/.test(p)).slice(0, 200).map((p) => {
-    try { const st = fs.statSync(p); return { path: p.replace(home, "~"), folder: st.isDirectory(), used: st.atimeMs || 0 }; } catch { return null; }
-  }).filter(Boolean);
-  const score = (it) => { const base = it.path.split("/").pop().toLowerCase().replace(/\.[^.]+$/, ""); return (base === n ? 100 : base.startsWith(n) ? 60 : 30) - it.path.split("/").length * 2 + it.used / 1e13; };
+  const items = r.out.split("\n").map((line) => {
+    const m = /^(.*?)\s+kMDItemContentType = (.*)$/.exec(line);
+    if (m) return { path: m[1], folder: m[2].trim() === "public.folder" };
+    return line.trim() ? { path: line.trim(), folder: q.kind === "folder" } : null;
+  }).filter((it) => it && !/\/(Library|node_modules|\.git|\.Trash)(\/|$)/.test(it.path)).map((it) => ({ ...it, path: it.path.replace(home, "~") }));
+  const score = (it) => {
+    const base = it.path.split("/").pop().toLowerCase().replace(/\.[^.]+$/, "");
+    const top = /^~\/(Desktop|Documents|Downloads)\//.test(it.path) ? 8 : 0;
+    return (base === n ? 100 : base.startsWith(n) ? 60 : 30) - it.path.split("/").length * 3 + top;
+  };
   items.sort((a, b) => score(b) - score(a));
   return { ok: items.length > 0, items: items.slice(0, 8).map(({ path, folder }) => ({ path, folder })) };
 }

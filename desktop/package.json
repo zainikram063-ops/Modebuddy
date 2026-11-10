@@ -1,7 +1,7 @@
 {
   "name": "modebuddy-desktop",
   "productName": "ModeBuddy",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "ModeBuddy for Mac",
   "private": true,
   "main": "main.js",
@@ -31,7 +31,10 @@
       "identity": null,
       "extendInfo": {
         "NSMicrophoneUsageDescription": "ModeBuddy listens while you hold Command and Option in Live mode.",
-        "NSAppleEventsUsageDescription": "ModeBuddy checks which website you are on to pick the right mode."
+        "NSAppleEventsUsageDescription": "ModeBuddy checks which website you are on to pick the right mode.",
+        "NSDesktopFolderUsageDescription": "ModeBuddy opens the files and folders you ask it to.",
+        "NSDocumentsFolderUsageDescription": "ModeBuddy opens the files and folders you ask it to.",
+        "NSDownloadsFolderUsageDescription": "ModeBuddy opens the files and folders you ask it to."
       }
     },
     "asarUnpack": [
