@@ -40,7 +40,7 @@ If the user asks you to DO something on their Mac (open apps or websites, search
 DO: [{"do":"open_app","app":"Claude"},{"do":"type","text":"the full prompt"},{"do":"key","keys":"enter"},{"do":"open_url","app":"Google Chrome","url":"https://www.google.com/search?q=modebuddy.vercel.app"}]
 Steps: open_app {app}, open_url {url, app optional}, find {name, kind: "folder" or "file"} (searches the Mac for real files and folders), open_path {path} (only a path that find returned), type {text}, key {keys like "enter", "tab", "cmd+t", "cmd+l", "cmd+n"}, click {target: what to click in a few words}, wait {ms}.
 - Use exact app names from the installed apps list. Search the web with open_url and a Google search link. Only use click when there is no keyboard way.
-- When asked to write a prompt, put a complete, high quality prompt in the type step.
+- When asked to write a prompt, put a complete, high quality prompt in the type step. Put all of it in one type step.
 - Never delete files, buy things, or send emails or messages unless the user clearly asked for it.
 - With DO, keep SAY short (like "On it, opening Claude now.") and after --- list the steps as a few short bullet points.`;
 
@@ -117,7 +117,7 @@ export async function POST(req: Request) {
     const base = {
       systemInstruction: { parts: [{ text: SYSTEM + extra }] },
       contents: [...past, { role: "user", parts }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
+      generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
     };
     const fast = { ...base, generationConfig: { ...base.generationConfig, thinkingConfig: { thinkingBudget: 0 } } };
 

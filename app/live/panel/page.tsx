@@ -143,11 +143,12 @@ export default function LivePanel() {
     return list.find((a) => a.toLowerCase() === n) || list.find((a) => a.toLowerCase().startsWith(n)) || list.find((a) => a.toLowerCase().includes(n)) || "";
   };
 
-  // ModeBuddy works through the task: follows the plan, and looks at the screen when it needs to
+  // ModeBuddy works through the task: checks the screen between steps, and falls back to the plan if it can't
   async function run(list: Step[], goal = "") {
     const A = actor();
     if (!A) { setErr("Update the ModeBuddy Mac app so it can do things for you."); go("error"); return; }
     stopRun.current = false;
+    const wait = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
     const log: { label: string; state: string; found?: string[] }[] = [];
     const show = () => setSteps(log.map((x) => ({ label: x.label, state: x.state })));
     const exec = async (raw: Step): Promise<{ ok: boolean; found?: string[] }> => {
@@ -156,11 +157,19 @@ export default function LivePanel() {
       if (s.do === "open_url") { if (!/^https?:\/\//i.test(String(s.url || ""))) return { ok: false }; s = { ...s, app: s.app ? realApp(s.app) || undefined : undefined }; }
       if (s.do === "open_path" && s.app) s = { ...s, app: realApp(s.app) || undefined };
       if (s.do === "click") { if (typeof s.x !== "number" || typeof s.y !== "number") return { ok: false }; if (s.x > 1 || s.y > 1) s = { ...s, x: s.x / 1000, y: s.y / 1000 }; }
+      if (s.do === "type") {
+        const t = String(s.text || "");
+        await A.act({ do: "type", text: "" }).catch(() => ({ ok: false }));
+        api()?.copy(t);
+        await wait(180);
+        const k = await A.act({ do: "key", keys: "cmd+v" }).catch(() => ({ ok: false }));
+        await wait(Math.min(2500, 350 + t.length / 3));
+        return { ok: !!k.ok };
+      }
       const res = await A.act(s).catch(() => ({ ok: false, items: [] }));
       if (s.do === "find") { const items = res.items || []; return { ok: items.length > 0, found: items.map((i) => (i.folder ? "folder: " : "file: ") + i.path) }; }
       return { ok: !!res.ok };
     };
-    // Look at the screen and ask what to do next (tries twice)
     const check = async (): Promise<{ steps: Step[]; done: boolean } | null> => {
       for (let tries = 0; tries < 2 && !stopRun.current; tries++) {
         const img = await A.shot().catch(() => null);
@@ -173,20 +182,21 @@ export default function LivePanel() {
       }
       return null;
     };
-    // Follow the plan, but never trust a guessed file path: stop at open_path and search instead
-    let queue: Step[] = [];
-    for (const s of list) { if (s.do === "open_path") break; queue.push(s); if (s.do === "find") break; }
-    let fails = 0, checks = 0, fixing = false;
+    const plan: Step[] = [];
+    for (const s of list) { if (s.do === "open_path") break; plan.push(s); if (s.do === "find") break; }
+    let queue: Step[] = plan.length ? [plan.shift() as Step] : [];
+    let fails = 0, checks = 0;
     for (let round = 0; round < 24 && !stopRun.current && fails < 3; round++) {
       if (!queue.length) {
-        if (checks++ >= 8) break;
+        if (checks++ >= 10) break;
         const r = await check();
-        if (!r) { if (fixing) { log.push({ label: "Couldn't check the screen", state: "fail" }); show(); } break; }
-        if (r.done || !r.steps.length) break;
-        queue = r.steps;
-        fixing = true;
+        if (stopRun.current || r?.done) break;
+        if (r && r.steps.length) queue = r.steps;
+        else if (plan.length) queue = [plan.shift() as Step];
+        else break;
       }
       const s = queue.shift() as Step;
+      if (plan[0]?.do === s.do) plan.shift();
       log.push({ label: label(s), state: "doing" });
       show();
       const r = await exec(s);
@@ -195,8 +205,8 @@ export default function LivePanel() {
       show();
       if (!r.ok) { fails += 1; queue = []; continue; }
       fails = 0;
-      if (s.do === "find") queue = [];
-      if (s.do === "open_app" || s.do === "open_url" || s.do === "open_path") await new Promise((ok) => setTimeout(ok, 900));
+      if (s.do === "open_app" || s.do === "open_url" || s.do === "open_path") await wait(900);
+      if (["find", "type", "open_app", "open_url", "open_path"].includes(s.do)) queue = [];
     }
     await A.act({ do: "done" }).catch(() => ({ ok: false }));
   }

@@ -16,6 +16,7 @@ Rules:
 - Pick the result that best matches what the user said: the exact name, and the place they mentioned (like Desktop or Downloads). If none match well, try find again with a different name.
 - If the right app is not in front, bring it to the front with open_app first.
 - Before typing, make sure the right text box is focused. Click it first if it is not.
+- Type the whole text in one type step. After typing, check that all of the text is in the right box before pressing enter. If it is missing, cut off or in the wrong place, fix it first.
 - If something is still loading, wait. If a step failed, try a different way.
 - Never delete anything, buy anything, or send emails or messages unless the task clearly asks for it.
 - When the task is complete, reply {"done": true}.`;
@@ -44,7 +45,7 @@ Installed apps: ${(installed || []).slice(0, 250).join(", ")}`;
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": KEY },
-          body: JSON.stringify({ systemInstruction: { parts: [{ text: RULES }] }, contents: [{ role: "user", parts }], generationConfig: { temperature: 0.1, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 512 } } }),
+          body: JSON.stringify({ systemInstruction: { parts: [{ text: RULES }] }, contents: [{ role: "user", parts }], generationConfig: { temperature: 0.1, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 1024 } } }),
           signal: AbortSignal.timeout(25000),
         });
         if (!r.ok) continue;
