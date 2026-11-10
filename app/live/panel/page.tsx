@@ -143,7 +143,27 @@ export default function LivePanel() {
     return list.find((a) => a.toLowerCase() === n) || list.find((a) => a.toLowerCase().startsWith(n)) || list.find((a) => a.toLowerCase().includes(n)) || "";
   };
 
-  // ModeBuddy works through the task: checks the screen between steps, and falls back to the plan if it can't
+  // Open the first app while the AI is still writing, so it is ready sooner
+  const early = useRef<{ key: string; t: number; at: number; done: Promise<boolean> } | null>(null);
+  const stepKey = (s: Step) => s.do + ":" + String(s.app || s.url || "").toLowerCase();
+  const openApp = async (A: Actor, s: Step) => {
+    for (let i = 0; i < 3 && !stopRun.current; i++) { const r = await A.act(s).catch(() => ({ ok: false })); if (r.ok) return true; }
+    return false;
+  };
+  function prep(raw: Step): Step | null {
+    if (raw.do === "open_app") { const a = realApp(raw.app); return a ? { ...raw, app: a } : null; }
+    if (raw.do === "open_url") return /^https?:\/\//i.test(String(raw.url || "")) ? { ...raw, app: raw.app ? realApp(raw.app) || undefined : undefined } : null;
+    return null;
+  }
+  function openEarly(raw: Step) {
+    const A = actor(), s = prep(raw);
+    if (!A || !s) return;
+    const rec = { key: stepKey(raw), t: Date.now(), at: 0, done: Promise.resolve(false) };
+    rec.done = (s.do === "open_app" ? openApp(A, s) : A.act(s).then((r) => !!r.ok).catch(() => false)).then((ok) => { rec.at = Date.now(); return ok; });
+    early.current = rec;
+  }
+
+  // ModeBuddy works through the task quickly, and only stops to look when it matters
   async function run(list: Step[], goal = "") {
     const A = actor();
     if (!A) { setErr("Update the ModeBuddy Mac app so it can do things for you."); go("error"); return; }
@@ -152,9 +172,15 @@ export default function LivePanel() {
     const log: { label: string; state: string; found?: string[] }[] = [];
     const show = () => setSteps(log.map((x) => ({ label: x.label, state: x.state })));
     const exec = async (raw: Step): Promise<{ ok: boolean; found?: string[] }> => {
+      if (raw.do === "open_app" || raw.do === "open_url") {
+        const s = prep(raw);
+        if (!s) return { ok: false };
+        const t = Date.now();
+        const ok = s.do === "open_app" ? await openApp(A, s) : !!(await A.act(s).catch(() => ({ ok: false }))).ok;
+        if (ok) await wait(Date.now() - t > 2500 ? 1500 : 250);
+        return { ok };
+      }
       let s = raw;
-      if (s.do === "open_app") { const a = realApp(s.app); if (!a) return { ok: false }; s = { ...s, app: a }; }
-      if (s.do === "open_url") { if (!/^https?:\/\//i.test(String(s.url || ""))) return { ok: false }; s = { ...s, app: s.app ? realApp(s.app) || undefined : undefined }; }
       if (s.do === "open_path" && s.app) s = { ...s, app: realApp(s.app) || undefined };
       if (s.do === "click") { if (typeof s.x !== "number" || typeof s.y !== "number") return { ok: false }; if (s.x > 1 || s.y > 1) s = { ...s, x: s.x / 1000, y: s.y / 1000 }; }
       if (s.do === "type") {
@@ -167,31 +193,54 @@ export default function LivePanel() {
         return { ok: !!k.ok };
       }
       const res = await A.act(s).catch(() => ({ ok: false, items: [] }));
-      if (s.do === "find") { const items = res.items || []; return { ok: items.length > 0, found: items.map((i) => (i.folder ? "folder: " : "file: ") + i.path) }; }
+      if (s.do === "find") {
+        const items = res.items || [];
+        if (items.length) return { ok: true, found: items.map((i) => (i.folder ? "folder: " : "file: ") + i.path) };
+        // macOS can hide Desktop/Documents/Downloads from the search, so use Spotlight like a person would
+        await A.act({ do: "key", keys: "cmd+space" }).catch(() => ({ ok: false }));
+        await wait(550);
+        api()?.copy(String(s.name || ""));
+        await wait(150);
+        await A.act({ do: "key", keys: "cmd+v" }).catch(() => ({ ok: false }));
+        await wait(1200);
+        return { ok: true, found: ["Search found nothing, so Spotlight is now open with the name typed in. Look at the Spotlight results on screen and open the right one."] };
+      }
       return { ok: !!res.ok };
     };
-    const check = async (): Promise<{ steps: Step[]; done: boolean } | null> => {
+    const check = async (): Promise<{ steps: Step[]; done: boolean; last: boolean } | null> => {
       for (let tries = 0; tries < 2 && !stopRun.current; tries++) {
         const img = await A.shot().catch(() => null);
         const r = await fetch("/api/live/next", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ goal, plan: list, history: log, image: img ? await shrink(img).catch(() => img) : null, installed: installed.current }),
+          body: JSON.stringify({ goal, plan: list, history: log, image: img ? await shrink(img, 1024, 0.55).catch(() => img) : null, installed: installed.current }),
         }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
-        if (r && (r.done || (Array.isArray(r.steps) && r.steps.length))) return { steps: r.done ? [] : r.steps.slice(0, 3), done: !!r.done };
+        if (r && (r.done || (Array.isArray(r.steps) && r.steps.length))) return { steps: r.done ? [] : r.steps.slice(0, 3), done: !!r.done, last: !!r.last };
       }
       return null;
     };
     const plan: Step[] = [];
     for (const s of list) { if (s.do === "open_path") break; plan.push(s); if (s.do === "find") break; }
+    // The first app may already be opening
+    const e = early.current;
+    early.current = null;
+    if (e && plan[0] && stepKey(plan[0]) === e.key) {
+      const first = plan.shift() as Step;
+      log.push({ label: label(first), state: "doing" });
+      show();
+      const ok = await e.done;
+      if (ok && e.at - e.t > 2500 && Date.now() - e.at < 1500) await wait(1500 - (Date.now() - e.at));
+      log[log.length - 1].state = ok ? "done" : "fail";
+      show();
+    }
     let queue: Step[] = plan.length ? [plan.shift() as Step] : [];
-    let fails = 0, checks = 0;
+    let fails = 0, checks = 0, last = false;
     for (let round = 0; round < 24 && !stopRun.current && fails < 3; round++) {
       if (!queue.length) {
-        if (checks++ >= 10) break;
+        if (last || checks++ >= 10) break;
         const r = await check();
         if (stopRun.current || r?.done) break;
-        if (r && r.steps.length) queue = r.steps;
+        if (r && r.steps.length) { queue = r.steps; last = r.last; }
         else if (plan.length) queue = [plan.shift() as Step];
         else break;
       }
@@ -203,10 +252,10 @@ export default function LivePanel() {
       log[log.length - 1].state = r.ok ? "done" : "fail";
       if (r.found) log[log.length - 1].found = r.found;
       show();
-      if (!r.ok) { fails += 1; queue = []; continue; }
+      if (!r.ok) { fails += 1; queue = []; last = false; continue; }
       fails = 0;
-      if (s.do === "open_app" || s.do === "open_url" || s.do === "open_path") await wait(900);
-      if (["find", "type", "open_app", "open_url", "open_path"].includes(s.do)) queue = [];
+      if (s.do === "find" || s.do === "type") queue = [];
+      else if (!queue.length && !last && plan.length) queue = [plan.shift() as Step];
     }
     await A.act({ do: "done" }).catch(() => ({ ok: false }));
   }
@@ -321,12 +370,14 @@ export default function LivePanel() {
       const dec = new TextDecoder();
       let text = "";
       let said = false;
+      let earlyTried = false;
       for (;;) {
         const { value, done: end } = await reader.read();
         if (end) break;
         text += dec.decode(value, { stream: true });
         setRaw(text);
         if (!said && /^\s*SAY\s*:.*\n/mi.test(text)) { said = true; const v = parse(text, false).say; if (v) talk(v); }
+        if (!earlyTried) { const m = /^\s*DO\s*:\s*\[\s*(\{[^{}]*\})/m.exec(text); if (m) { earlyTried = true; try { openEarly(JSON.parse(m[1])); } catch { /* wait for the full plan */ } } }
       }
       setDone(true);
       const p = parse(text, true);
@@ -362,6 +413,7 @@ export default function LivePanel() {
         hush();
         stopRun.current = true;
         setSteps([]);
+        early.current = null;
         setSpeaking(false);
         const had = viewRef.current === "answer" && last.current;
         if (had && last.current) turns.current.push(last.current);

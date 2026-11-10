@@ -20,6 +20,7 @@ Rules:
 - Type the whole text in one type step. After typing, check that all of the text is in the right box before pressing enter. If it is missing, cut off or in the wrong place, fix it first.
 - If something is still loading, wait. If a step failed, try a different way.
 - Never delete anything, buy anything, or send emails or messages unless the task clearly asks for it.
+- If the steps you send will finish the task, add "last": true.
 - When the task is complete, reply {"done": true}.`;
 
 type H = { label: string; state: string; found?: string[] };
@@ -46,14 +47,14 @@ Installed apps: ${(installed || []).slice(0, 250).join(", ")}`;
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": KEY },
-          body: JSON.stringify({ systemInstruction: { parts: [{ text: RULES }] }, contents: [{ role: "user", parts }], generationConfig: { temperature: 0.1, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 1024 } } }),
+          body: JSON.stringify({ systemInstruction: { parts: [{ text: RULES }] }, contents: [{ role: "user", parts }], generationConfig: { temperature: 0.1, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 256 } } }),
           signal: AbortSignal.timeout(25000),
         });
         if (!r.ok) continue;
         const j = await r.json();
         const t = (j.candidates?.[0]?.content?.parts || []).map((p: { text?: string; thought?: boolean }) => (p.thought ? "" : p.text || "")).join("");
         const o = JSON.parse(t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1));
-        return Response.json({ done: !!o.done, steps: Array.isArray(o.steps) ? o.steps.slice(0, 3) : [] });
+        return Response.json({ done: !!o.done, last: !!o.last, steps: Array.isArray(o.steps) ? o.steps.slice(0, 3) : [] });
       } catch { /* try the next model */ }
     }
     return Response.json({ error: "no answer" }, { status: 502 });
