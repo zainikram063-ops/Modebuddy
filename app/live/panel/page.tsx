@@ -87,6 +87,18 @@ function onColor(hex: string) {
 // Your words are not shown while you talk, just a sound animation
 const SHOW_WORDS = false;
 
+type LiveMsg = { setupComplete?: unknown; serverContent?: { modelTurn?: { parts?: { text?: string }[] }; turnComplete?: boolean } };
+
+// Turns mic samples into 16-bit audio for streaming
+function pcm16(f: Float32Array) {
+  const b = new Uint8Array(f.length * 2);
+  const v = new DataView(b.buffer);
+  for (let i = 0; i < f.length; i++) { const s = Math.max(-1, Math.min(1, f[i])); v.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true); }
+  let bin = "";
+  for (let i = 0; i < b.length; i += 8192) bin += String.fromCharCode(...b.subarray(i, i + 8192));
+  return btoa(bin);
+}
+
 const appMode = (app: string) =>
   /cursor|code|xcode|terminal|iterm|warp|studio|intellij|pycharm|webstorm|sublime|zed|nova|docker|github/i.test(app) ? "code"
   : /notion|notes|obsidian|goodnotes|notability|preview|books|anki|quizlet|word|pages|onenote|craft|bear|classroom/i.test(app) ? "study" : "buddy";
@@ -126,6 +138,107 @@ export default function LivePanel() {
   type Actor = { act: (s: Step) => Promise<{ ok: boolean; error?: string; items?: { path: string; folder: boolean }[] }>; shot: () => Promise<string | null> };
   const [steps, setSteps] = useState<{ label: string; state: string; ms?: number }[]>([]);
   const stopRun = useRef(false);
+  // ---------- Streaming: your voice goes to the AI while you are still talking ----------
+  type LiveSession = { sendRealtimeInput: (x: object) => void; close: () => void };
+  type Sink = (m: { text?: string; done?: boolean; error?: boolean }) => void;
+  const live = useRef<{ s: LiveSession | null; ready: boolean; queue: object[]; sink: Sink | null } | null>(null);
+  const liveRes = useRef<Promise<Response | null> | null>(null);
+  const liveSend = (x: object) => {
+    const L = live.current;
+    if (!L) return;
+    if (L.ready && L.s) { try { L.s.sendRealtimeInput(x); } catch { /* connection dropped */ } }
+    else L.queue.push(x);
+  };
+  function liveClose() {
+    const L = live.current;
+    live.current = null;
+    liveRes.current = null;
+    if (!L) return;
+    L.sink?.({ error: true });
+    try { L.s?.close(); } catch { /* already closed */ }
+  }
+  async function liveOpen() {
+    const A = actor();
+    if (live.current?.s) {
+      // Follow-up: same conversation, fresh look at the screen
+      A?.shot().then((img) => (img ? shrink(img) : null)).then((img) => { if (img) liveSend({ video: { data: img, mimeType: "image/jpeg" } }); }).catch(() => {});
+      return;
+    }
+    const L = { s: null as LiveSession | null, ready: false, queue: [] as object[], sink: null as Sink | null };
+    live.current = L;
+    try {
+      const shot = A ? A.shot().then((img) => (img ? shrink(img).catch(() => img) : null)).catch(() => null) : Promise.resolve(null);
+      const t = await fetch("/api/live/token", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ modes: custom, modeId: custom.some((m) => m.id === mode.id) ? mode.id : undefined, installed: installed.current }) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      if (!t?.token || live.current !== L) throw new Error("no pass");
+      const { GoogleGenAI, Modality } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey: t.token, httpOptions: { apiVersion: "v1alpha" } });
+      for (const model of (t.models || []) as string[]) {
+        const ok = await new Promise<boolean>((done) => {
+          let opened = false;
+          const timer = window.setTimeout(() => done(false), 4000);
+          ai.live.connect({
+            model,
+            config: { responseModalities: [Modality.TEXT], systemInstruction: String(t.system || ""), realtimeInputConfig: { automaticActivityDetection: { disabled: true } } },
+            callbacks: {
+              onmessage: (raw: unknown) => {
+                const m = raw as LiveMsg;
+                if (m.setupComplete && !opened) { opened = true; window.clearTimeout(timer); done(true); }
+                for (const p of m.serverContent?.modelTurn?.parts || []) if (p.text) L.sink?.({ text: p.text });
+                if (m.serverContent?.turnComplete) L.sink?.({ done: true });
+              },
+              onerror: () => { if (!opened) { window.clearTimeout(timer); done(false); } else L.sink?.({ error: true }); },
+              onclose: () => { if (!opened) { window.clearTimeout(timer); done(false); } else { L.sink?.({ error: true }); if (live.current === L) live.current = null; } },
+            },
+          }).then((s) => { L.s = s as unknown as LiveSession; }).catch(() => { window.clearTimeout(timer); done(false); });
+        });
+        for (let i = 0; ok && i < 20 && !L.s; i++) await new Promise((r) => setTimeout(r, 50));
+        if (ok && L.s) break;
+        try { L.s?.close(); } catch { /* ignore */ }
+        L.s = null;
+      }
+      if (!L.s || live.current !== L) throw new Error("no connection");
+      const img = await shot;
+      if (img) L.queue.splice(L.queue.findIndex((x) => "activityStart" in x) + 1, 0, { video: { data: img, mimeType: "image/jpeg" } });
+      L.ready = true;
+      for (const x of L.queue.splice(0)) L.s.sendRealtimeInput(x);
+    } catch {
+      if (live.current === L) { live.current = null; try { L.s?.close(); } catch { /* ignore */ } }
+      L.sink?.({ error: true });
+    }
+  }
+  // When you let go: tell the AI you're done, and hand back its answer as it streams in
+  function liveFinish(): Promise<Response | null> | null {
+    const L = live.current;
+    if (!L) return null;
+    liveSend({ activityEnd: {} });
+    return new Promise((resolve) => {
+      let ctrl: ReadableStreamDefaultController<Uint8Array> | null = null;
+      let full = "", started = false;
+      const enc = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({ start: (c) => { ctrl = c; } });
+      const timer = window.setTimeout(() => { if (!started) { L.sink = null; resolve(null); } }, 7000);
+      L.sink = (m) => {
+        if (m.text) {
+          full += m.text;
+          ctrl?.enqueue(enc.encode(m.text));
+          if (!started) { started = true; window.clearTimeout(timer); resolve(new Response(body)); }
+        }
+        if (m.done || m.error) {
+          L.sink = null;
+          if (!started) { window.clearTimeout(timer); resolve(null); return; }
+          try { ctrl?.close(); } catch { /* already closed */ }
+          if (m.done && full) fetch("/api/live/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ full }) }).catch(() => {});
+        }
+      };
+    });
+  }
+  // Use the streamed answer if there is one, otherwise ask the normal way
+  async function liveFetch(url: string, init: RequestInit) {
+    const p = liveRes.current;
+    liveRes.current = null;
+    const r = p ? await p.catch(() => null) : null;
+    return r || fetch(url, init);
+  }
   const memory = useRef<{ routines: { name: string; steps: Step[] }[] }>({ routines: [] });
   const loadMem = () => fetch("/api/live/learn").then((r) => r.json()).then((m) => { if (m && Array.isArray(m.routines)) memory.current = m; }).catch(() => {});
   const learn = (body: object) => fetch("/api/live/learn", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json()).then((m) => { if (m && Array.isArray(m.routines)) memory.current = m; }).catch(() => {});
@@ -329,6 +442,7 @@ export default function LivePanel() {
       const w = Math.floor(d.length / 7), lv: number[] = [];
       for (let k = 0; k < 7; k++) { let sum = 0; for (let j = k * w; j < (k + 1) * w; j += 8) sum += d[j] * d[j]; lv.push(Math.min(1, Math.sqrt(sum / (w / 8)) * 7)); }
       setLevels(lv);
+      if (live.current) liveSend({ audio: { data: pcm16(d), mimeType: "audio/pcm;rate=" + ev.inputBuffer.sampleRate } });
       let sum = 0;
       for (let i = 0; i < d.length; i += 16) sum += d[i] * d[i];
       lvl.current = Math.min(1, Math.sqrt(sum / (d.length / 16)) * 6);
@@ -383,8 +497,8 @@ export default function LivePanel() {
     setRaw("");
     setDone(false);
     try {
-      const pic = image ? await shrink(image).catch(() => image) : null;
-      const res = await fetch("/api/live", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ audio, image: pic, history: turns.current.slice(-4), modes: custom, modeId: custom.some((m) => m.id === mode.id) ? mode.id : undefined, installed: installed.current }), signal: ac.signal });
+      const pic = image && !liveRes.current ? await shrink(image).catch(() => image) : null;
+      const res = await liveFetch("/api/live", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ audio, image: pic, history: turns.current.slice(-4), modes: custom, modeId: custom.some((m) => m.id === mode.id) ? mode.id : undefined, installed: installed.current }), signal: ac.signal });
       const type = res.headers.get("content-type") || "";
       if (type.includes("text/html")) throw new Error("Please sign in to ModeBuddy first.");
       if (!res.ok || !res.body) {
@@ -460,15 +574,20 @@ export default function LivePanel() {
         setCopied(false);
         setMicReady(false);
         go("listening");
+        liveRes.current = null;
+        liveOpen();
+        liveSend({ activityStart: {} });
         starting.current = startRec();
       } else if (e.type === "stop") {
         await new Promise((ok) => setTimeout(ok, 250));
         const r = await stopRec();
+        liveRes.current = liveFinish();
         if (!r) { setErr("ModeBuddy could not use the microphone. Open Live settings from the green dot and allow it."); go("error"); return; }
         if (r.secs < 0.5) { back(); return; }
         go("thinking");
         ask(r.audio, e.image ?? null);
       } else if (e.type === "cancel") {
+        liveClose();
         await stopRec();
         back();
       } else if (e.type === "hide") {
@@ -481,6 +600,7 @@ export default function LivePanel() {
         setRaw("");
         setErr("");
         setHeard("");
+        liveClose();
         stopRun.current = true;
         setSteps([]);
         hush();
