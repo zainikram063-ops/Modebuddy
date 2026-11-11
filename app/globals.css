@@ -2289,3 +2289,4 @@ html.lv-panel-root, html.lv-panel-root body { background: transparent !important
 .gl-latch[data-mode="code"] .gl-steps li { color: rgba(255,255,255,.45); }
 .gl-latch[data-mode="code"] .gl-steps li.doing, .gl-latch[data-mode="code"] .gl-steps li.done { color: #f1f1ee; }
 @keyframes gl-rot { to { transform: rotate(1turn); } }
+.gl-steps li em { margin-left: auto; font-style: normal; font-size: 11px; opacity: .55; font-variant-numeric: tabular-nums; }

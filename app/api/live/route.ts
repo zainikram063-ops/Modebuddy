@@ -42,7 +42,7 @@ Steps: open_app {app}, open_url {url, app optional}, find {name, kind: "folder" 
 - Use exact app names from the installed apps list. Search the web with open_url and a Google search link. Only use click when there is no keyboard way.
 - When asked to write a prompt, put a complete, high quality prompt in the type step. Put all of it in one type step.
 - Never delete files, buy things, or send emails or messages unless the user clearly asked for it.
-- With DO, keep SAY short (like "On it, opening Claude now.") and after --- list the steps as a few short bullet points.`;
+- With DO, keep SAY short (like "On it, opening Claude now.") and after --- write just one short sentence.`;
 
 type Turn = { q?: string; a?: string };
 
