@@ -8,7 +8,25 @@ export const dynamic = "force-dynamic";
 
 const KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
 const LIMIT = Number(process.env.LIVE_DAILY_LIMIT || 100);
-const MODELS = [process.env.LIVE_STREAM_MODEL, "gemini-live-2.5-flash-preview", "gemini-2.0-flash-live-001"].filter(Boolean) as string[];
+const DEFAULTS = ["gemini-live-2.5-flash-preview", "gemini-2.0-flash-live-001"];
+const score = (n: string) => (/live/.test(n) ? 4 : 0) + (/flash/.test(n) ? 2 : 0) - (/preview|exp/.test(n) ? 1 : 0) + parseFloat((n.match(/(\d+(?:\.\d+)?)/) || [])[1] || "0");
+let found: { at: number; list: string[] } | null = null;
+
+// Ask Google which live (streaming) models this key can use, so names changing doesn't break it
+async function liveModels() {
+  if (found && Date.now() - found.at < 3600000) return found.list;
+  let list: string[] = [];
+  try {
+    const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", { headers: { "x-goog-api-key": KEY }, signal: AbortSignal.timeout(4000) });
+    const j = r.ok ? await r.json() : {};
+    list = ((j.models || []) as { name: string; supportedGenerationMethods?: string[] }[])
+      .filter((m) => (m.supportedGenerationMethods || []).includes("bidiGenerateContent") && !/native-audio|tts|image/i.test(m.name))
+      .map((m) => m.name.replace(/^models\//, ""))
+      .sort((x, y) => score(y) - score(x));
+  } catch { /* use the defaults */ }
+  found = { at: Date.now(), list: [...new Set([process.env.LIVE_STREAM_MODEL || "", ...list, ...DEFAULTS].filter(Boolean))] };
+  return found.list;
+}
 
 // Gives the Mac a one-time pass to stream your voice to Gemini (your real key never leaves the server)
 export async function POST(req: Request) {
@@ -41,7 +59,7 @@ export async function POST(req: Request) {
     const token = await ai.authTokens.create({
       config: { uses: 1, expireTime: new Date(Date.now() + 10 * 60 * 1000).toISOString(), newSessionExpireTime: new Date(Date.now() + 2 * 60 * 1000).toISOString(), httpOptions: { apiVersion: "v1alpha" } },
     });
-    return Response.json({ token: token.name, models: MODELS, system: SYSTEM + extra });
+    return Response.json({ token: token.name, models: await liveModels(), system: SYSTEM + extra });
   } catch (e) {
     return Response.json({ error: String(e).slice(0, 200) }, { status: 500 });
   }
