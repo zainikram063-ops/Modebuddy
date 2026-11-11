@@ -2298,3 +2298,18 @@ html.lv-panel-root, html.lv-panel-root body { background: transparent !important
 .lv-mem em { font-size: 12px; color: var(--ink-3); font-style: normal; }
 .lv-mem button { border: 1px solid var(--rule); background: transparent; border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--ink-2); }
 .lv-mem button:hover { color: #b3261e; border-color: #b3261e; }
+
+/* ===== Live sound bars (no words) ===== */
+.gl-field > p { display: none; }
+.gl-field { justify-content: center; }
+.gl-wave { display: flex; align-items: center; justify-content: center; gap: 4px; height: 22px; flex: 1; }
+.gl-wave b { width: 4px; height: 18%; border-radius: 2px; background: rgba(30,28,24,.78); transition: height .2s ease, opacity .2s; }
+.gl-latch[data-mode="code"] .gl-wave b { background: #c4ff2e; }
+.gl-wave.wait b { opacity: .35; animation: gl-dim 1.1s ease-in-out infinite; }
+.gl-wave.thinking b { height: 70%; animation: gl-wave .9s ease-in-out infinite; }
+.gl-wave.thinking b:nth-child(2) { animation-delay: .08s; } .gl-wave.thinking b:nth-child(3) { animation-delay: .16s; }
+.gl-wave.thinking b:nth-child(4) { animation-delay: .24s; } .gl-wave.thinking b:nth-child(5) { animation-delay: .32s; }
+.gl-wave.thinking b:nth-child(6) { animation-delay: .4s; } .gl-wave.thinking b:nth-child(7) { animation-delay: .48s; }
+.gl-wave.answer b, .gl-wave.done b, .gl-wave.error b { height: 14%; opacity: .45; }
+@keyframes gl-wave { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
+@keyframes gl-dim { 0%, 100% { opacity: .25; } 50% { opacity: .5; } }

@@ -84,6 +84,9 @@ function onColor(hex: string) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? "#0a0a0a" : "#ffffff";
 }
 
+// Your words are not shown while you talk, just a sound animation
+const SHOW_WORDS = false;
+
 const appMode = (app: string) =>
   /cursor|code|xcode|terminal|iterm|warp|studio|intellij|pycharm|webstorm|sublime|zed|nova|docker|github/i.test(app) ? "code"
   : /notion|notes|obsidian|goodnotes|notability|preview|books|anki|quizlet|word|pages|onenote|craft|bear|classroom/i.test(app) ? "study" : "buddy";
@@ -102,6 +105,7 @@ export default function LivePanel() {
   const [latchH, setLatchH] = useState(88);
   const [leaving, setLeaving] = useState(false);
   const [micReady, setMicReady] = useState(false);
+  const [levels, setLevels] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
   const viewRef = useRef<View>("idle");
   const rec = useRef<Rec | null>(null);
   const starting = useRef<Promise<void> | null>(null);
@@ -301,6 +305,7 @@ export default function LivePanel() {
 
   // Every ~1.3s while you talk, fetch "what was said so far" for the chatbox
   async function partial(sid: number) {
+    if (!SHOW_WORDS) return;
     const r = rec.current, s = hearState.current;
     if (!r || s.busy || s.count >= 10 || r.chunks.length < 3 || r.chunks.length === s.seen) return;
     s.busy = true; s.count += 1; s.seen = r.chunks.length;
@@ -321,6 +326,9 @@ export default function LivePanel() {
       const d = ev.inputBuffer.getChannelData(0);
       chunks.push(new Float32Array(d));
       if (chunks.length === 1) setMicReady(true);
+      const w = Math.floor(d.length / 7), lv: number[] = [];
+      for (let k = 0; k < 7; k++) { let sum = 0; for (let j = k * w; j < (k + 1) * w; j += 8) sum += d[j] * d[j]; lv.push(Math.min(1, Math.sqrt(sum / (w / 8)) * 7)); }
+      setLevels(lv);
       let sum = 0;
       for (let i = 0; i < d.length; i += 16) sum += d[i] * d[i];
       lvl.current = Math.min(1, Math.sqrt(sum / (d.length / 16)) * 6);
@@ -551,7 +559,7 @@ export default function LivePanel() {
                 {words.length
                   ? words.map((wd, i) => <span key={i} className={view === "listening" && i >= words.length - 2 ? "tent" : ""}>{wd} </span>)
                   : view === "listening" ? (!micReady ? "One sec…" : follow ? "Ask a follow-up" : "Listening") : "…"}
-                {view === "listening" && micReady && <i className="gl-caret" />}
+                <span className={`gl-wave ${view}${view === "listening" && !micReady ? " wait" : ""}`}>{levels.map((l, i) => <b key={i} style={view === "listening" && micReady ? { height: `${Math.round(16 + l * 84)}%` } : undefined} />)}</span>
               </p>
               {view === "thinking" && <span className="gl-dots"><i /><i /><i /></span>}
             </div>

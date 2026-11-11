@@ -94,7 +94,9 @@ export async function POST(req: Request) {
     if (!KEY) return Response.json({ error: "Live is missing the Gemini key on the server." }, { status: 500 });
     const auth = await session().catch(() => null);
     if (!auth) return Response.json({ error: "Please sign in to ModeBuddy first." }, { status: 401 });
-    if (await overLimit(auth).catch(() => false)) return Response.json({ error: "You have used all of today's Live questions. They reset at midnight (UTC)." }, { status: 429 });
+    const limitP = overLimit(auth).catch(() => false);
+    const memP = Promise.resolve(auth.sb.from("live_memory").select("data").eq("user_id", auth.userId).maybeSingle()).catch(() => ({ data: null }));
+    if (await limitP) return Response.json({ error: "You have used all of today's Live questions. They reset at midnight (UTC)." }, { status: 429 });
 
     const { audio, image, history, modes, modeId, installed } = (await req.json().catch(() => ({}))) as { audio?: string; image?: string | null; history?: Turn[]; modes?: { name: string; apps?: string[]; sites?: string[] }[]; modeId?: string; installed?: string[] };
     if (!audio) return Response.json({ error: "I did not catch any audio. Try again." }, { status: 400 });
@@ -109,7 +111,7 @@ export async function POST(req: Request) {
     parts.push({ text: (image ? "This is my screen right now. My request is in the audio." : "My request is in the audio. No screenshot was available.") + (Array.isArray(installed) && installed.length ? "\nApps installed on this Mac: " + installed.slice(0, 250).join(", ") : "") });
 
     let extra = "";
-    const { data: memRow } = await auth.sb.from("live_memory").select("data").eq("user_id", auth.userId).maybeSingle();
+    const { data: memRow } = await memP;
     const mem = (memRow?.data || {}) as { routines?: { name: string; triggers?: string[] }[]; facts?: string[] };
     if (mem.facts?.length) extra += "\n\nWhat you know about this user (use it, and never ask them for things you already know):\n" + mem.facts.slice(0, 50).map((f) => "- " + f).join("\n");
     if (mem.routines?.length) extra += "\n\nThe user's routines (things they do often):\n" + mem.routines.slice(0, 25).map((r) => "- " + r.name + " (they might say: " + (r.triggers || []).slice(0, 5).join("; ") + ")").join("\n") + "\nIf what they ask matches one of these routines, even loosely (like \"start everything up\" or \"open my usual stuff\"), do NOT write DO. Instead add a line right after SAY: USE: <exact routine name>. Only write DO if they ask for something different or extra.";
