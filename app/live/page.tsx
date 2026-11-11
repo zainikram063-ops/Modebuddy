@@ -36,7 +36,7 @@ export default function LiveSetup() {
         <main className="legal">
           <h1>ModeBuddy Live</h1>
           <p>Live works in the ModeBuddy Mac app. Open the app and turn it on from the green dot in your menu bar.</p>
-          <p className="legal-back"><Link href="/live/history">Live history</Link> · <Link href="/">← Back to ModeBuddy</Link></p>
+          <p className="legal-back"><Link href="/live/history">Live history</Link> · <Link href="/live/memory">Memory</Link> · <Link href="/">← Back to ModeBuddy</Link></p>
         </main>
       </div>
     );
@@ -83,7 +83,7 @@ export default function LiveSetup() {
           <button className="lv-btn2" onClick={() => api.restart()}>Restart ModeBuddy</button>
         </p>
 
-        <p className="legal-back"><Link href="/live/history">Live history</Link> · <Link href="/">← Back to ModeBuddy</Link></p>
+        <p className="legal-back"><Link href="/live/history">Live history</Link> · <Link href="/live/memory">Memory</Link> · <Link href="/">← Back to ModeBuddy</Link></p>
       </main>
     </div>
   );

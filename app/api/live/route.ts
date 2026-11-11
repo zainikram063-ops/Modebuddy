@@ -109,6 +109,11 @@ export async function POST(req: Request) {
     parts.push({ text: (image ? "This is my screen right now. My request is in the audio." : "My request is in the audio. No screenshot was available.") + (Array.isArray(installed) && installed.length ? "\nApps installed on this Mac: " + installed.slice(0, 250).join(", ") : "") });
 
     let extra = "";
+    const { data: memRow } = await auth.sb.from("live_memory").select("data").eq("user_id", auth.userId).maybeSingle();
+    const mem = (memRow?.data || {}) as { routines?: { name: string; triggers?: string[] }[]; facts?: string[] };
+    if (mem.facts?.length) extra += "\n\nWhat you know about this user (use it, and never ask them for things you already know):\n" + mem.facts.slice(0, 50).map((f) => "- " + f).join("\n");
+    if (mem.routines?.length) extra += "\n\nThe user's routines (things they do often):\n" + mem.routines.slice(0, 25).map((r) => "- " + r.name + " (they might say: " + (r.triggers || []).slice(0, 5).join("; ") + ")").join("\n") + "\nIf what they ask matches one of these routines, even loosely (like \"start everything up\" or \"open my usual stuff\"), do NOT write DO. Instead add a line right after SAY: USE: <exact routine name>. Only write DO if they ask for something different or extra.";
+    extra += "\n\nIf the user asks you to remember something (like \"remember that I use Chrome\"), add a line right after SAY: REMEMBER: <what to remember>.";
     if (Array.isArray(modes) && modes.length) extra += "\n\nThe user also has custom modes. If one fits what is on screen better, set MODE to its exact name:\n" + modes.slice(0, 20).map((m) => `- ${String(m.name).slice(0, 40)} (apps: ${(m.apps || []).slice(0, 8).join(", ")}; sites: ${(m.sites || []).slice(0, 8).join(", ")})`).join("\n");
     if (modeId) {
       const { data: cm } = await auth.sb.from("mode_apps").select("name, prompt").eq("mode_id", String(modeId)).maybeSingle();

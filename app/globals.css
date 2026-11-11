@@ -2290,3 +2290,11 @@ html.lv-panel-root, html.lv-panel-root body { background: transparent !important
 .gl-latch[data-mode="code"] .gl-steps li.doing, .gl-latch[data-mode="code"] .gl-steps li.done { color: #f1f1ee; }
 @keyframes gl-rot { to { transform: rotate(1turn); } }
 .gl-steps li em { margin-left: auto; font-style: normal; font-size: 11px; opacity: .55; font-variant-numeric: tabular-nums; }
+
+/* ===== Live memory page ===== */
+.lv-mem { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.lv-mem > div { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.lv-mem span { font-size: 13.5px; color: var(--ink-2); }
+.lv-mem em { font-size: 12px; color: var(--ink-3); font-style: normal; }
+.lv-mem button { border: 1px solid var(--rule); background: transparent; border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--ink-2); }
+.lv-mem button:hover { color: #b3261e; border-color: #b3261e; }

@@ -31,7 +31,7 @@ export default async function LiveHistory() {
             <div className="lv-h-a"><ReactMarkdown remarkPlugins={[remarkGfm]}>{r.answer}</ReactMarkdown></div>
           </details>
         ))}
-        <p className="legal-back"><Link href="/live">Live settings</Link> · <Link href="/">← Back to ModeBuddy</Link></p>
+        <p className="legal-back"><Link href="/live">Live settings</Link> · <Link href="/live/memory">Memory</Link> · <Link href="/">← Back to ModeBuddy</Link></p>
       </main>
     </div>
   );

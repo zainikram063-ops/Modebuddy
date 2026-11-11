@@ -70,7 +70,7 @@ function parse(raw: string, final: boolean) {
   const get = (k: string) => (head.match(new RegExp("^\\s*" + k + "\\s*:\\s*(.*)$", "mi")) || [])[1]?.trim() || "";
   let answer = cut >= 0 ? raw.slice(cut).replace(/^-{3,}\s*\n?/, "") : "";
   if (cut < 0 && final) answer = raw.replace(/^\s*(HEARD|MODE|SAY)\s*:.*$/gim, "").trim();
-  return { heard: get("HEARD"), mode: get("MODE").toLowerCase().replace(/[^a-z]/g, ""), say: get("SAY"), does: get("DO"), answer };
+  return { heard: get("HEARD"), mode: get("MODE").toLowerCase().replace(/[^a-z]/g, ""), say: get("SAY"), does: get("DO"), use: get("USE"), remember: get("REMEMBER"), answer };
 }
 
 const pasteable = (md: string) => ((md.match(/```[^\n]*\n([\s\S]*?)```/) || [])[1] ?? md).trim();
@@ -122,6 +122,14 @@ export default function LivePanel() {
   type Actor = { act: (s: Step) => Promise<{ ok: boolean; error?: string; items?: { path: string; folder: boolean }[] }>; shot: () => Promise<string | null> };
   const [steps, setSteps] = useState<{ label: string; state: string; ms?: number }[]>([]);
   const stopRun = useRef(false);
+  const memory = useRef<{ routines: { name: string; steps: Step[] }[] }>({ routines: [] });
+  const loadMem = () => fetch("/api/live/learn").then((r) => r.json()).then((m) => { if (m && Array.isArray(m.routines)) memory.current = m; }).catch(() => {});
+  const learn = (body: object) => fetch("/api/live/learn", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json()).then((m) => { if (m && Array.isArray(m.routines)) memory.current = m; }).catch(() => {});
+  const findRoutine = (name: string) => {
+    const n = name.toLowerCase().trim();
+    const all = memory.current.routines;
+    return all.find((x) => x.name.toLowerCase().trim() === n) || all.find((x) => x.name.toLowerCase().includes(n) || n.includes(x.name.toLowerCase()));
+  };
   const askAt = useRef(0);
   const noCloud = useRef(false);
   const installed = useRef<string[]>([]);
@@ -173,12 +181,12 @@ export default function LivePanel() {
   }
 
   // ModeBuddy runs the plan straight through, and only looks at the screen if something fails (plus once at the end)
-  async function run(list: Step[], goal = "") {
+  async function run(list: Step[], goal = "", routine = "") {
     const A = actor();
     if (!A) { setErr("Update the ModeBuddy Mac app so it can do things for you."); go("error"); return; }
     stopRun.current = false;
     const wait = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
-    const log: { label: string; state: string; found?: string[]; t0?: number; ms?: number }[] = [{ label: "Plan", state: "done", ms: Date.now() - askAt.current }];
+    const log: { label: string; state: string; found?: string[]; t0?: number; ms?: number }[] = [{ label: routine ? "Routine: " + routine : "Plan", state: "done", ms: Date.now() - askAt.current }];
     const show = () => setSteps(log.map((x) => ({ label: x.label, state: x.state, ms: x.ms })));
     const begin = (s: Step, t0 = Date.now()) => { log.push({ label: label(s), state: "doing", t0 }); show(); };
     const finish = (ok: boolean, found?: string[]) => { const x = log[log.length - 1]; x.state = ok ? "done" : "fail"; x.ms = Date.now() - (x.t0 || Date.now()); if (found) x.found = found; show(); };
@@ -233,18 +241,21 @@ export default function LivePanel() {
       return null;
     };
     const plan: Step[] = [];
+    const did: Step[] = [];
     for (const s of list) { if (s.do === "open_path") break; plan.push(s); if (s.do === "find") break; }
     // The first app may already be opening
     const e = early.current;
     early.current = null;
     if (e && plan[0] && stepKey(plan[0]) === e.key) {
-      begin(plan.shift() as Step, e.t);
+      const first = plan.shift() as Step;
+      begin(first, e.t);
       const ok = await e.done;
       if (ok && e.at - e.t > 2500 && Date.now() - e.at < 1000) await wait(1000 - (Date.now() - e.at));
       finish(ok);
+      if (ok) did.push(first);
     }
     let queue: Step[] = [...plan];
-    let fails = 0, checks = 0, stopAfter = false, hidden = false;
+    let fails = 0, checks = 0, stopAfter = false, hidden = false, fixed = false;
     for (let round = 0; round < 30 && !stopRun.current && fails < 3; round++) {
       if (!queue.length) {
         if (stopAfter || checks++ >= 8) break;
@@ -253,16 +264,19 @@ export default function LivePanel() {
         if (stopRun.current || !r || r.done || !r.steps.length) break;
         queue = r.steps;
         stopAfter = r.last;
+        fixed = true;
       }
       const s = queue.shift() as Step;
       begin(s);
       const r = await exec(s);
       finish(r.ok, r.found);
+      if (r.ok && s.do !== "find" && s.do !== "wait") did.push(s.do === "click" ? { do: "click", target: s.target } : s);
       if (!r.ok) { fails += 1; queue = []; stopAfter = false; continue; }
       fails = 0;
       if (s.do === "find") queue = [];
     }
     await A.act({ do: "done" }).catch(() => ({ ok: false }));
+    if (!stopRun.current && !fails && did.length) learn(routine && !fixed ? { routine } : { goal, steps: did });
   }
 
   // Speak with the ElevenLabs / Fish Audio voice, or the Mac voice if that is not set up
@@ -387,10 +401,13 @@ export default function LivePanel() {
         if (!said && /^\s*SAY\s*:.*\n/mi.test(text)) { said = true; const v = parse(text, false).say; if (v) talk(v); }
         if (!earlyTried) { const m = /^\s*DO\s*:\s*\[\s*(\{[^{}]*\})/m.exec(text); if (m) { earlyTried = true; try { openEarly(JSON.parse(m[1])); } catch { /* wait for the full plan */ } } }
         if (!ran) { const m = /^\s*DO\s*:\s*(\[.*\])\s*\n/m.exec(text); if (m) { try { const list = JSON.parse(m[1]); if (Array.isArray(list) && list.length) { ran = true; run(list.slice(0, 15), parse(text, false).heard || ""); } } catch { /* wait for the rest */ } } }
+        if (!ran) { const u = /^\s*USE\s*:\s*(.+)\n/mi.exec(text); if (u) { const r = findRoutine(u[1]); if (r) { ran = true; run(r.steps.slice(0, 20), parse(text, false).heard || "", r.name); } } }
       }
       setDone(true);
       const p = parse(text, true);
       last.current = { q: p.heard || "(question)", a: p.answer || text };
+      if (!ran && p.use) { const r = findRoutine(p.use); if (r) { ran = true; run(r.steps.slice(0, 20), p.heard || "", r.name); } }
+      if (p.remember) learn({ note: p.remember });
       if (p.does && !ran) {
         try { const list = JSON.parse(p.does); if (Array.isArray(list) && list.length) run(list.slice(0, 15), p.heard || ""); } catch { /* not valid steps */ }
       }
@@ -479,7 +496,8 @@ export default function LivePanel() {
     document.documentElement.classList.add("lv-panel-root");
     const load = () => fetch("/api/live/modes").then((r) => r.json()).then((j) => setCustom(Array.isArray(j.modes) ? j.modes : [])).catch(() => {});
     load();
-    const iv = window.setInterval(load, 10 * 60 * 1000);
+    loadMem();
+    const iv = window.setInterval(() => { load(); loadMem(); }, 10 * 60 * 1000);
     const off = desktop()?.live?.onEvent((e) => handler.current(e));
     return () => { off?.(); window.clearInterval(iv); };
   }, []);
