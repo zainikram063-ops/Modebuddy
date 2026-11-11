@@ -99,6 +99,9 @@ function pcm16(f: Float32Array) {
   return btoa(bin);
 }
 
+// Words that mean the user wants a file or folder, not an app
+const FILEY = /\b(folders?|files?|documents?|docs?|project|md|markdown|pdf|png|jpe?g|txt|csv|downloads)\b/i;
+
 const appMode = (app: string) =>
   /cursor|code|xcode|terminal|iterm|warp|studio|intellij|pycharm|webstorm|sublime|zed|nova|docker|github/i.test(app) ? "code"
   : /notion|notes|obsidian|goodnotes|notability|preview|books|anki|quizlet|word|pages|onenote|craft|bear|classroom/i.test(app) ? "study" : "buddy";
@@ -289,7 +292,8 @@ export default function LivePanel() {
     if (raw.do === "open_url") return /^https?:\/\//i.test(String(raw.url || "")) ? { ...raw, app: raw.app ? realApp(raw.app) || undefined : undefined } : null;
     return null;
   }
-  function openEarly(raw: Step) {
+  function openEarly(raw: Step, heard = "") {
+    if (raw.do === "open_app" && FILEY.test(heard)) return;
     const A = actor(), s = prep(raw);
     if (!A || !s) return;
     const rec = { key: stepKey(raw), t: Date.now(), at: 0, done: Promise.resolve(false) };
@@ -332,7 +336,13 @@ export default function LivePanel() {
       }
       const res = await A.act(s).catch(() => ({ ok: false, items: [] }));
       if (s.do === "find") {
-        const items = res.items || [];
+        let items = res.items || [];
+        // Try other ways the name might be written (claude ads md -> claude-ads-md, claude_ads_md, claude ads.md...)
+        const n = String(s.name || "").trim();
+        for (const v of [{ name: n.replace(/\s+/g, "-") }, { name: n.replace(/\s+/g, "_") }, { name: n.replace(/\s+/g, "") }, { name: n.replace(/\s+(md|pdf|txt|png|jpe?g|docx?|csv)$/i, ".$1"), kind: "file" }, { name: n.split(/\s+/).slice(0, 2).join(" ") }, { name: n, kind: undefined }]) {
+          if (items.length || !v.name || (v.name === n && "kind" in v && !s.kind)) continue;
+          items = (await A.act({ ...s, ...v }).catch(() => ({ ok: false, items: [] }))).items || [];
+        }
         if (items.length) return { ok: true, found: items.map((i) => (i.folder ? "folder: " : "file: ") + i.path) };
         // macOS can hide Desktop/Documents/Downloads from the search, so use Spotlight like a person would
         await A.act({ do: "key", keys: "cmd+space" }).catch(() => ({ ok: false }));
@@ -371,6 +381,7 @@ export default function LivePanel() {
       finish(ok);
       if (ok) did.push(first);
     }
+    if (FILEY.test(goal) && !list.some((x) => x.do === "find" || x.do === "open_path")) plan.length = 0;
     let queue: Step[] = [...plan];
     let fails = 0, checks = 0, stopAfter = false, hidden = false, fixed = false;
     for (let round = 0; round < 30 && !stopRun.current && fails < 3; round++) {
@@ -521,7 +532,7 @@ export default function LivePanel() {
         text += dec.decode(value, { stream: true });
         setRaw(text);
         if (!said && /^\s*SAY\s*:.*\n/mi.test(text)) { said = true; const v = parse(text, false).say; if (v) talk(v); }
-        if (!earlyTried) { const m = /^\s*DO\s*:\s*\[\s*(\{[^{}]*\})/m.exec(text); if (m) { earlyTried = true; try { openEarly(JSON.parse(m[1])); } catch { /* wait for the full plan */ } } }
+        if (!earlyTried) { const m = /^\s*DO\s*:\s*\[\s*(\{[^{}]*\})/m.exec(text); if (m) { earlyTried = true; try { openEarly(JSON.parse(m[1]), parse(text, false).heard); } catch { /* wait for the full plan */ } } }
         if (!ran) { const m = /^\s*DO\s*:\s*(\[.*\])\s*\n/m.exec(text); if (m) { try { const list = JSON.parse(m[1]); if (Array.isArray(list) && list.length) { ran = true; run(list.slice(0, 15), parse(text, false).heard || ""); } } catch { /* wait for the rest */ } } }
         if (!ran) { const u = /^\s*USE\s*:\s*(.+)\n/mi.exec(text); if (u) { const r = findRoutine(u[1]); if (r) { ran = true; run(r.steps.slice(0, 20), parse(text, false).heard || "", r.name); } } }
       }
