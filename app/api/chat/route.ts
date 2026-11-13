@@ -90,6 +90,10 @@ async function handlePOST(req: Request) {
 
   let model;
   try { model = createModel(cfg); } catch (e) { return fail(400, (e as Error).message); }
+  // Fast lane: simple questions on a Pro model are answered by its Flash version (much quicker, same quality for easy stuff)
+  if (cfg.provider === "google" && /pro/i.test(String(cfg.model || "")) && quickThinking(body)) {
+    try { model = createModel({ ...cfg, model: String(cfg.model).replace(/pro/i, "flash") }); } catch { /* keep the chosen model */ }
+  }
 
   // ---- mode ----
   let mode: Mode | undefined = BUILTIN_MODES.find((m) => m.id === modeId);
@@ -291,4 +295,9 @@ function quickThinking(body: unknown) {
   const msgs = ((body as { messages?: { role?: string; content?: unknown }[] } | null)?.messages || []).filter((m) => m.role === "user");
   const t = String(msgs[msgs.length - 1]?.content ?? "");
   return t.length < 280 && !/```|<file|\b(explain|why|how (does|do|can|would)|compare|analy[sz]e|step[- ]by[- ]step|prove|debug|fix|code|script|write|essay|plan|design|calculate|solve|research|detailed?|in depth)\b/i.test(t);
+}
+
+// Wakes the server up while you type, so your message is answered sooner
+export async function GET() {
+  return new Response("ok", { headers: { "Cache-Control": "no-store" } });
 }
