@@ -37,6 +37,7 @@ const RETRY = [400, 404, 429, 500, 503];
 export const withFallback = (base: Fetch): Fetch => async (input, init) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   const m = /\/models\/([^:/?]+):/.exec(url);
+  init = withThinking(url, init);
   if (!m) return base(input, init);
   const others = (await liveModels()).map((x) => x.id).filter((id) => id !== m[1]).sort((a, b) => tierOf(a) - tierOf(b));
   const chain = [m[1], ...others].slice(0, 6);
@@ -48,3 +49,19 @@ export const withFallback = (base: Fetch): Fetch => async (input, init) => {
   }
   return base(input, init);
 };
+
+/* Quick answers: when the chat asks for it, tell Gemini to think less so it starts answering sooner */
+function withThinking(url: string, init?: RequestInit): RequestInit | undefined {
+  try {
+    const h = new Headers(init?.headers);
+    if (!h.get("x-mb-think")) return init;
+    h.delete("x-mb-think");
+    if (typeof init?.body !== "string" || !/generateContent/i.test(url)) return { ...init, headers: h };
+    const b = JSON.parse(init.body);
+    const model = (/\/models\/([^:/?]+):/.exec(url) || [])[1] || "";
+    b.generationConfig = { ...(b.generationConfig || {}), thinkingConfig: /gemini-2\.5/.test(model) ? { thinkingBudget: /pro/.test(model) ? 128 : 0 } : { thinkingLevel: "low" } };
+    return { ...init, headers: h, body: JSON.stringify(b) };
+  } catch {
+    return init;
+  }
+}

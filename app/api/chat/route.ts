@@ -85,7 +85,8 @@ async function handlePOST(req: Request) {
   const messages = (body.messages ?? []).slice(-60);
   if (!conversationId || !messages.length) return fail(400, "Nothing to send.");
   if (!cfg?.provider) return fail(400, "Pick a model in Settings → Models.");
-  if (!process.env.GEMINI_API_KEY) return fail(400, `Add your ${cfg.provider} API key in Settings → Models.`);
+  if (!cfg.apiKey?.trim() && !process.env.GEMINI_API_KEY && cfg.provider !== "custom")
+    return fail(400, `Add your ${cfg.provider} API key in Settings → Models.`);
 
   let model;
   try { model = createModel(cfg); } catch (e) { return fail(400, (e as Error).message); }
@@ -244,6 +245,7 @@ system += `\n\n${ARTIFACT_NOTE}`;
 
   const result = streamText({
     model,
+    headers: quickThinking(body) ? { "x-mb-think": "low" } : undefined,
     system,
     messages,
     tools: { ...memoryTools, ...webTools, ...modeTools, ...studyTools, ...mcp.tools } as Parameters<typeof streamText>[0]["tools"], // ← NEW (...studyTools)
@@ -282,4 +284,11 @@ system += `\n\n${ARTIFACT_NOTE}`;
 /* signed-in users only, with a daily free limit */
 export async function POST(req: Request) {
   return (await chatGuard(req)) ?? handlePOST(req as Parameters<typeof handlePOST>[0]);
+}
+
+// Simple questions get a fast answer with little thinking; harder ones keep full thinking
+function quickThinking(body: unknown) {
+  const msgs = ((body as { messages?: { role?: string; content?: unknown }[] } | null)?.messages || []).filter((m) => m.role === "user");
+  const t = String(msgs[msgs.length - 1]?.content ?? "");
+  return t.length < 280 && !/```|<file|\b(explain|why|how (does|do|can|would)|compare|analy[sz]e|step[- ]by[- ]step|prove|debug|fix|code|script|write|essay|plan|design|calculate|solve|research|detailed?|in depth)\b/i.test(t);
 }

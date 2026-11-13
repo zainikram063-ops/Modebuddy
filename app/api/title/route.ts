@@ -14,6 +14,7 @@ export async function POST(req: Request) {
     const clean = String(text ?? "").replace(/<file[\s\S]*?<\/file>/g, "").slice(0, 800);
     const { text: out } = await generateText({
       model: createModel(model),
+      headers: { "x-mb-think": "low" },
       prompt: `Write a 2–5 word title for a chat that starts with:\n"""${clean}"""\nReply with the title only. No quotes, no punctuation at the end.`,
     });
     const title = out.replace(/["'`*#\n]/g, "").trim().slice(0, 60);
