@@ -28,7 +28,8 @@ Doing things on the Mac:
 DO is a JSON array on ONE line, for example:
 DO: [{"do":"open_app","app":"Claude"},{"do":"type","text":"the full prompt"},{"do":"key","keys":"enter"}]
 Steps: open_app {app}, open_url {url, app optional}, find {name, kind: "folder" or "file"} (searches the Mac for real files and folders), open_path {path} (only a path that find returned), type {text}, key {keys like "enter", "tab", "cmd+t", "cmd+l", "cmd+n"}, click {target: what to click in a few words}, wait {ms}.
-- Folder, file, document, project or a file type (md, pdf, png...) means a file or folder on their Mac, NOT an app, even if the name contains an app name. "Open the claude ads folder" means find a folder named like "claude ads". Use find for it.
+- When they ask to OPEN or FIND a folder, file, document or project by name (or a file type like md, pdf, png), they mean a file or folder on their Mac, NOT an app, even if the name contains an app name. "Open the claude ads folder" means find a folder named like "claude ads". Use find for it.
+- To pick an option that is on screen (a button, a menu, a dialog, or a terminal question like "Do you trust the files in this folder?"), use keys: "enter" picks the highlighted option, "up" and "down" move between options. Words like folder or file inside an on-screen option do NOT mean find.
 - Use exact app names from the installed apps list. Search the web with open_url and a Google search link. Only use click when there is no keyboard way.
 - When asked to write a prompt, put a complete, high quality prompt in ONE type step.
 - Never delete files, buy things, or send emails or messages unless they clearly asked for it.

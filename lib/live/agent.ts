@@ -74,7 +74,7 @@ async function openApp(A: Actor, s: Step, go: () => boolean = () => !stopped) {
 
 // Opens the first app while the AI is still writing the plan, so it's ready sooner
 export function openEarly(raw: Step, heard: string, showing: () => boolean) {
-  if (raw.do === "open_app" && FILEY.test(heard)) return;
+  if (raw.do === "open_app" && wrongApp(heard, [raw])) return;
   const A = actor(), s = prep(raw);
   if (!A || !s) return;
   const rec = { key: keyOf(raw), t: Date.now(), at: 0, done: Promise.resolve(false) };
@@ -162,7 +162,7 @@ export async function runTask(list: Step[], goal: string, routine: string, since
     finish(ok);
     if (ok) did.push(first);
   }
-  if (FILEY.test(goal) && !list.some((x) => x.do === "find" || x.do === "open_path")) plan.length = 0;
+  if (wrongApp(goal, list)) plan.length = 0;
   let queue: Step[] = [...plan];
   let fails = 0, checks = 0, stopAfter = false, hidden = false, fixed = false;
   for (let round = 0; round < 30 && !stopped && fails < 3; round++) {
@@ -176,6 +176,8 @@ export async function runTask(list: Step[], goal: string, routine: string, since
       fixed = true;
     }
     const s = queue.shift() as Step;
+    // A click with no spot on screen yet: look at the screen to find it (not a failure)
+    if (s.do === "click" && (typeof s.x !== "number" || typeof s.y !== "number")) { queue = []; stopAfter = false; continue; }
     begin(s);
     const r = await exec(s);
     finish(r.ok, r.found);
@@ -187,4 +189,13 @@ export async function runTask(list: Step[], goal: string, routine: string, since
   await A.act({ do: "done" }).catch(() => ({ ok: false }));
   if (!stopped && !fails && did.length) learn(routine && !fixed ? { routine } : { goal, steps: did });
   return true;
+}
+
+// "Open the claude ads folder" must not open the Claude app, but "yes I trust this folder" is fine
+function wrongApp(goal: string, list: Step[]) {
+  const first = list[0];
+  if (!first || first.do !== "open_app" || list.some((x) => x.do === "find" || x.do === "open_path")) return false;
+  const words = goal.toLowerCase().split(/[^a-z0-9.]+/).filter(Boolean);
+  const i = words.indexOf(String(first.app || "").toLowerCase().split(/\s+/)[0]);
+  return i >= 0 && words.slice(i + 1, i + 4).some((w) => FILEY.test(w));
 }
