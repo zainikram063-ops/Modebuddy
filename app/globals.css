@@ -2313,3 +2313,7 @@ html.lv-panel-root, html.lv-panel-root body { background: transparent !important
 .gl-wave.answer b, .gl-wave.done b, .gl-wave.error b { height: 14%; opacity: .45; }
 @keyframes gl-wave { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
 @keyframes gl-dim { 0%, 100% { opacity: .25; } 50% { opacity: .5; } }
+
+/* ===== Live: what it heard (faded, shown after you let go) ===== */
+.gl-heard { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; color: rgba(40,34,28,.5); animation: gl-word .3s ease both; }
+.gl-latch[data-mode="code"] .gl-heard { color: rgba(255,255,255,.45); }

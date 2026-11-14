@@ -1,31 +1,40 @@
-import { SYSTEM } from "../../../lib/liveSystem";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { SYSTEM, liveContext, type CustomMode, type LiveMem } from "../../../lib/liveSystem";
+import { liveModels } from "../../../lib/platform";
+import { tierOf } from "../../../lib/models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const KEY =
-  process.env.GEMINI_API_KEY ||
-  process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-  process.env.GOOGLE_API_KEY ||
-  process.env.GOOGLE_AI_API_KEY ||
-  "";
-const MODELS = Array.from(
-  new Set([process.env.LIVE_MODEL, "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-flash-lite-latest"].filter(Boolean) as string[])
-);
-const BUDGET_MS = 45000;
-const ATTEMPT_MS = 22000;
-
+const KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
+const LIMIT = Number(process.env.LIVE_DAILY_LIMIT || 100);
+// Requests that sound like "do something on my Mac" get a little thinking time and the installed apps list
+const TASKY = /\b(open|launch|start|go to|search|google|look up|find|type|write|click|press|play|close|switch|send|show me|take me)\b/i;
 
 type Turn = { q?: string; a?: string };
+type Body = { text?: string; audio?: string; image?: string | null; history?: Turn[]; modes?: CustomMode[]; modeId?: string; installed?: string[]; app?: string };
+type SB = ReturnType<typeof createServerClient>;
 
+// The smart brain: the newest Gemini Flash this key can use, with older ones as backup
+async function brains() {
+  const ids = (await liveModels().catch(() => [])).map((m) => m.id);
+  const flash = ids.filter((id) => tierOf(id) === 1).slice(0, 2);
+  const lite = ids.filter((id) => tierOf(id) === 0).slice(0, 1);
+  return [...new Set([process.env.LIVE_MODEL || "", ...flash, "gemini-2.5-flash", "gemini-flash-latest", ...lite, "gemini-2.5-flash-lite"].filter(Boolean))];
+}
 
-// One try at one model. Gives up if the model has not started answering in ATTEMPT_MS.
+// Think as little as possible so the answer starts right away; tasks get a little more for better plans
+function thinking(model: string, task: boolean): (Record<string, unknown> | null)[] {
+  if (/gemini-2\.5/.test(model)) return [{ thinkingBudget: task ? 512 : 0 }, null];
+  return task ? [{ thinkingLevel: "low" }, null] : [{ thinkingLevel: "minimal" }, { thinkingLevel: "low" }, null];
+}
+
+// One try at one model; gives up if it hasn't started answering in 15 seconds
 async function gemini(model: string, body: unknown) {
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), ATTEMPT_MS);
+  const timer = setTimeout(() => ac.abort(), 15000);
   try {
     return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`, {
       method: "POST",
@@ -38,8 +47,8 @@ async function gemini(model: string, body: unknown) {
   }
 }
 
-// Turns Gemini's stream into plain text for the island
-function toText(body: ReadableStream<Uint8Array>, onDone?: (full: string) => Promise<void>) {
+// Turns Gemini's stream into plain text for the latch
+function toText(body: ReadableStream<Uint8Array>, onDone: (full: string) => Promise<void>) {
   const reader = body.getReader();
   const dec = new TextDecoder();
   const enc = new TextEncoder();
@@ -47,7 +56,7 @@ function toText(body: ReadableStream<Uint8Array>, onDone?: (full: string) => Pro
   return new ReadableStream<Uint8Array>({
     async pull(ctrl) {
       const { value, done } = await reader.read();
-      if (done) { if (onDone) await onDone(full).catch(() => {}); ctrl.close(); return; }
+      if (done) { await onDone(full).catch(() => {}); ctrl.close(); return; }
       buf += dec.decode(value, { stream: true });
       const lines = buf.split("\n");
       buf = lines.pop() || "";
@@ -63,51 +72,53 @@ function toText(body: ReadableStream<Uint8Array>, onDone?: (full: string) => Pro
   });
 }
 
+// Pressing ⌘⌥ wakes this up, so it is ready the moment you let go
+export async function GET() {
+  await brains().catch(() => []);
+  return new Response("ok", { headers: { "Cache-Control": "no-store" } });
+}
+
 export async function POST(req: Request) {
   const t0 = Date.now();
   try {
     if (!KEY) return Response.json({ error: "Live is missing the Gemini key on the server." }, { status: 500 });
-    const auth = await session().catch(() => null);
-    if (!auth) return Response.json({ error: "Please sign in to ModeBuddy first." }, { status: 401 });
-    const limitP = overLimit(auth).catch(() => false);
-    const memP = Promise.resolve(auth.sb.from("live_memory").select("data").eq("user_id", auth.userId).maybeSingle()).catch(() => ({ data: null }));
-    if (await limitP) return Response.json({ error: "You have used all of today's Live questions. They reset at midnight (UTC)." }, { status: 429 });
+    const b = (await req.json().catch(() => ({}))) as Body;
+    const words = String(b.text || "").replace(/\s+/g, " ").trim().slice(0, 2000);
+    if (!words && !b.audio) return Response.json({ error: "I did not catch that. Hold ⌘⌥ and try again." }, { status: 400 });
+    const [a, models] = await Promise.all([who(), brains()]);
+    if (!a) return Response.json({ error: "Please sign in to ModeBuddy first." }, { status: 401 });
+    const day = new Date();
+    day.setUTCHours(0, 0, 0, 0);
+    const [count, mem, mode] = await Promise.all([
+      Promise.resolve(a.sb.from("live_history").select("id", { count: "exact", head: true }).eq("user_id", a.uid).gte("created_at", day.toISOString())).then((r) => (r.error ? 0 : r.count || 0)).catch(() => 0),
+      Promise.resolve(a.sb.from("live_memory").select("data").eq("user_id", a.uid).maybeSingle()).then((r): LiveMem => (r.data?.data || {}) as LiveMem).catch((): LiveMem => ({})),
+      b.modeId ? Promise.resolve(a.sb.from("mode_apps").select("name, prompt").eq("mode_id", String(b.modeId)).maybeSingle()).then((r) => (r.data ? { name: String(r.data.name), prompt: String(r.data.prompt || "") } : null)).catch(() => null) : Promise.resolve(null),
+    ]);
+    if (count >= LIMIT) return Response.json({ error: "You have used all of today's Live questions. They reset at midnight (UTC)." }, { status: 429 });
 
-    const { audio, image, history, modes, modeId, installed } = (await req.json().catch(() => ({}))) as { audio?: string; image?: string | null; history?: Turn[]; modes?: { name: string; apps?: string[]; sites?: string[] }[]; modeId?: string; installed?: string[] };
-    if (!audio) return Response.json({ error: "I did not catch any audio. Try again." }, { status: 400 });
-
-    const past = (Array.isArray(history) ? history : []).slice(-4).flatMap((t) => [
+    const task = !words || TASKY.test(words);
+    const past = (Array.isArray(b.history) ? b.history : []).slice(-4).flatMap((t) => [
       { role: "user", parts: [{ text: String(t.q || "(question)").slice(0, 2000) }] },
       { role: "model", parts: [{ text: String(t.a || "").slice(0, 6000) }] },
     ]);
+    const about = (b.app ? `\nApp in front: ${String(b.app).slice(0, 60)}` : "") + (task && Array.isArray(b.installed) && b.installed.length ? "\nApps installed on this Mac: " + b.installed.slice(0, 250).join(", ") : "");
     const parts: Record<string, unknown>[] = [];
-    if (image) parts.push({ inlineData: { mimeType: "image/jpeg", data: image } });
-    parts.push({ inlineData: { mimeType: "audio/wav", data: audio } });
-    parts.push({ text: (image ? "This is my screen right now. My request is in the audio." : "My request is in the audio. No screenshot was available.") + (Array.isArray(installed) && installed.length ? "\nApps installed on this Mac: " + installed.slice(0, 250).join(", ") : "") });
-
-    let extra = "";
-    const { data: memRow } = await memP;
-    const mem = (memRow?.data || {}) as { routines?: { name: string; triggers?: string[] }[]; facts?: string[] };
-    if (mem.facts?.length) extra += "\n\nWhat you know about this user (use it, and never ask them for things you already know):\n" + mem.facts.slice(0, 50).map((f) => "- " + f).join("\n");
-    if (mem.routines?.length) extra += "\n\nThe user's routines (things they do often):\n" + mem.routines.slice(0, 25).map((r) => "- " + r.name + " (they might say: " + (r.triggers || []).slice(0, 5).join("; ") + ")").join("\n") + "\nIf what they ask matches one of these routines, even loosely (like \"start everything up\" or \"open my usual stuff\"), do NOT write DO. Instead add a line right after SAY: USE: <exact routine name>. Only write DO if they ask for something different or extra.";
-    extra += "\n\nIf the user asks you to remember something (like \"remember that I use Chrome\"), add a line right after SAY: REMEMBER: <what to remember>.";
-    if (Array.isArray(modes) && modes.length) extra += "\n\nThe user also has custom modes. If one fits what is on screen better, set MODE to its exact name:\n" + modes.slice(0, 20).map((m) => `- ${String(m.name).slice(0, 40)} (apps: ${(m.apps || []).slice(0, 8).join(", ")}; sites: ${(m.sites || []).slice(0, 8).join(", ")})`).join("\n");
-    if (modeId) {
-      const { data: cm } = await auth.sb.from("mode_apps").select("name, prompt").eq("mode_id", String(modeId)).maybeSingle();
-      if (cm?.prompt) extra += `\n\nRight now you are the user's "${cm.name}" mode. Follow it:\n${String(cm.prompt).slice(0, 2000)}`;
-    }
+    if (b.image) parts.push({ inlineData: { mimeType: "image/jpeg", data: b.image } });
+    if (words) parts.push({ text: (b.image ? "This is my screen right now.\n" : "") + `What I said (from speech, may have small mistakes): "${words}"` + about });
+    else parts.push({ inlineData: { mimeType: "audio/wav", data: b.audio } }, { text: (b.image ? "This is my screen right now. " : "") + "My request is in the recording." + about });
     const base = {
-      systemInstruction: { parts: [{ text: SYSTEM + extra }] },
+      systemInstruction: { parts: [{ text: SYSTEM + liveContext(mem, b.modes, mode) }] },
       contents: [...past, { role: "user", parts }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
+      generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
     };
-    const fast = { ...base, generationConfig: { ...base.generationConfig, thinkingConfig: { thinkingBudget: 0 } } };
 
     let res: Response | null = null;
+    let used = "";
     const errors: string[] = [];
-    outer: for (const model of MODELS) {
-      for (const body of [fast, base]) {
-        if (Date.now() - t0 > BUDGET_MS) break outer;
+    outer: for (const model of models) {
+      for (const tc of thinking(model, task)) {
+        if (Date.now() - t0 > 40000) break outer;
+        const body = tc ? { ...base, generationConfig: { ...base.generationConfig, thinkingConfig: tc } } : base;
         let r: Response;
         try {
           r = await gemini(model, body);
@@ -115,61 +126,47 @@ export async function POST(req: Request) {
           errors.push(`${model}: ${e instanceof Error && e.name === "AbortError" ? "took too long" : "could not connect"}`);
           continue outer;
         }
-        if (r.ok && r.body) {
-          res = r;
-          console.log(`[live] ${model} started answering after ${Date.now() - t0}ms`);
-          break outer;
-        }
-        const txt = (await r.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 160);
-        errors.push(`${model} ${r.status}: ${txt}`);
+        if (r.ok && r.body) { res = r; used = model; break outer; }
+        errors.push(`${model} ${r.status}: ${(await r.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 160)}`);
         if (r.status === 400) continue;
         if (r.status === 401 || r.status === 403) break outer;
         continue outer;
       }
     }
-
     if (!res || !res.body) {
       console.error("[live] no model answered:", errors.join(" | "));
       return Response.json({ error: "The AI is busy right now, try again in a moment. (" + (errors[errors.length - 1] || "no answer") + ")" }, { status: 502 });
     }
-    return new Response(toText(res.body, (t) => save(auth, t)), { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+    console.log(`[live] ${used} started answering after ${Date.now() - t0}ms`);
+    return new Response(toText(res.body, (full) => save(a.sb, a.uid, words, full)), {
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Live-Model": used },
+    });
   } catch (e) {
     console.error("[live] crashed:", e);
     return Response.json({ error: "Live hit a server error: " + String(e instanceof Error ? e.message : e).slice(0, 160) }, { status: 500 });
   }
 }
 
-type Auth = { sb: ReturnType<typeof createServerClient>; userId: string };
-const LIMIT = Number(process.env.LIVE_DAILY_LIMIT || 100);
-
-async function session(): Promise<Auth | null> {
+async function who(): Promise<{ sb: SB; uid: string } | null> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !anon) return null;
   const store = await cookies();
   const sb = createServerClient(url, anon, { cookies: { getAll: () => store.getAll(), setAll: () => {} } });
   const { data } = await sb.auth.getUser();
-  return data.user ? { sb, userId: data.user.id } : null;
+  return data.user ? { sb, uid: data.user.id } : null;
 }
 
-// Daily Live limit, counted from the history table
-async function overLimit(a: Auth) {
-  const day = new Date();
-  day.setUTCHours(0, 0, 0, 0);
-  const { count, error } = await a.sb.from("live_history").select("id", { count: "exact", head: true }).eq("user_id", a.userId).gte("created_at", day.toISOString());
-  return !error && (count ?? 0) >= LIMIT;
-}
-
-// Save the finished question + answer to Live history
-async function save(a: Auth, full: string) {
+// Saves the question and answer to Live history
+async function save(sb: SB, uid: string, words: string, full: string) {
   const cut = full.search(/^-{3,}\s*$/m);
   const head = cut >= 0 ? full.slice(0, cut) : "";
   const get = (k: string) => (head.match(new RegExp("^\\s*" + k + "\\s*:\\s*(.*)$", "mi")) || [])[1]?.trim() || "";
   const answer = (cut >= 0 ? full.slice(cut).replace(/^-{3,}\s*\n?/, "") : full).trim();
   if (!answer) return;
-  await a.sb.from("live_history").insert({
-    user_id: a.userId,
-    question: get("HEARD").slice(0, 500),
+  await sb.from("live_history").insert({
+    user_id: uid,
+    question: (words || get("HEARD")).slice(0, 500),
     answer: answer.slice(0, 20000),
     mode: get("MODE").toLowerCase().replace(/[^a-z]/g, "").slice(0, 20) || "buddy",
   });

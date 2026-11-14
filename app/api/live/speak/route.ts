@@ -8,10 +8,12 @@ const EL = process.env.ELEVENLABS_API_KEY || "";
 const FISH = process.env.FISH_AUDIO_API_KEY || process.env.FISH_API_KEY || "";
 const VOICE = process.env.TTS_VOICE_ID || "";
 
-// Streams the spoken answer from ElevenLabs or Fish Audio
+// Streams the spoken answer from ElevenLabs or Fish Audio.
+// With no text it just answers "is a cloud voice set up?" (204 yes, 404 no) and wakes this up.
 export async function GET(req: Request) {
   const text = (new URL(req.url).searchParams.get("t") || "").slice(0, 600);
-  if (!text || (!EL && !FISH)) return new Response(null, { status: 404 });
+  if (!text) return new Response(null, { status: EL || FISH ? 204 : 404, headers: { "Cache-Control": "no-store" } });
+  if (!EL && !FISH) return new Response(null, { status: 404 });
   const store = await cookies();
   const sb = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || "",

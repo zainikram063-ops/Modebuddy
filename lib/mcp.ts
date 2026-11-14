@@ -57,8 +57,21 @@ export async function loadConnectorTools(list: Connector[]) {
       const client = await connectMCP(c);
       clients.push(client);
       const t = await withTimeout(client.tools(), 10_000, c.name);
-      const prefix = slug(c.name);
-      for (const [name, def] of Object.entries(t)) tools[`${prefix}__${name}`.slice(0, 64)] = def;
+      const prefix = slug(c.name).slice(0, 20);
+      for (const [name, def] of Object.entries(t)) {
+        let key = `${prefix}__${name}`;
+        if (key.length > 64) {
+          key = `${prefix.slice(0, 15)}_${name.slice(0, 46)}`;
+        }
+        let finalKey = key.slice(0, 64);
+        let counter = 1;
+        while (tools[finalKey]) {
+          const suffix = `_${counter}`;
+          finalKey = key.slice(0, 64 - suffix.length) + suffix;
+          counter++;
+        }
+        tools[finalKey] = def;
+      }
       names.push(c.name);
     } catch (e) {
       errors.push(`${c.name}: ${(e as Error).message}`);
