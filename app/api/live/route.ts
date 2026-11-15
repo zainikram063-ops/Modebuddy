@@ -22,7 +22,7 @@ async function brains() {
   const ids = (await liveModels().catch(() => [])).map((m) => m.id);
   const flash = ids.filter((id) => tierOf(id) === 1).slice(0, 2);
   const lite = ids.filter((id) => tierOf(id) === 0).slice(0, 1);
-  return [...new Set([process.env.LIVE_MODEL || "", ...flash, "gemini-2.5-flash", "gemini-flash-latest", ...lite, "gemini-2.5-flash-lite"].filter(Boolean))];
+  return [...new Set([process.env.LIVE_MODEL || "", ...flash, "gemini-2.5-flash", "gemini-flash-latest", ...lite, "gemini-2.5-flash-lite"].filter((n) => n && !/gemini-2\.0/.test(n)))];
 }
 
 // Think as little as possible so the answer starts right away; tasks get a little more for better plans

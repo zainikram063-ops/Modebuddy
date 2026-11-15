@@ -46,7 +46,7 @@ export function openEars(pass: Promise<Pass>): Ears {
         const fail = () => { if (!opened) { window.clearTimeout(timer); done(false); } else { dead = true; poke?.(); } };
         ai.live.connect({
           model,
-          config: { responseModalities: [Modality.TEXT], systemInstruction: p.system || "", inputAudioTranscription: {}, realtimeInputConfig: { automaticActivityDetection: { disabled: true } } },
+          config: { responseModalities: [/native-audio/.test(model) ? Modality.AUDIO : Modality.TEXT], systemInstruction: p.system || "", inputAudioTranscription: {}, realtimeInputConfig: { automaticActivityDetection: { disabled: true } } },
           callbacks: {
             onmessage: (raw: unknown) => {
               const m = raw as Msg, c = m.serverContent;

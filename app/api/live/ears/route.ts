@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 
 const KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
 const LIMIT = Number(process.env.LIVE_DAILY_LIMIT || 100);
-const DEFAULTS = ["gemini-live-2.5-flash-preview", "gemini-2.0-flash-live-001"];
-const score = (n: string) => (/live/.test(n) ? 4 : 0) + (/flash/.test(n) ? 2 : 0) - (/preview|exp/.test(n) ? 1 : 0) + parseFloat((n.match(/(\d+(?:\.\d+)?)/) || [])[1] || "0");
+const DEFAULTS = ["gemini-live-2.5-flash-preview"];
+const score = (n: string) => (/live/.test(n) ? 4 : 0) + (/flash/.test(n) ? 2 : 0) - (/preview|exp/.test(n) ? 1 : 0) - (/native-audio/.test(n) ? 10 : 0) + parseFloat((n.match(/(\d+(?:\.\d+)?)/) || [])[1] || "0");
 let found: { at: number; list: string[] } | null = null;
 
 // Which live (streaming) models this key can use, so new model names don't break anything
@@ -20,11 +20,11 @@ async function liveModels() {
     const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", { headers: { "x-goog-api-key": KEY }, signal: AbortSignal.timeout(4000) });
     const j = r.ok ? await r.json() : {};
     list = ((j.models || []) as { name: string; supportedGenerationMethods?: string[] }[])
-      .filter((m) => (m.supportedGenerationMethods || []).includes("bidiGenerateContent") && !/native-audio|tts|image/i.test(m.name))
+      .filter((m) => (m.supportedGenerationMethods || []).includes("bidiGenerateContent") && !/tts|image|gemini-2\.0/i.test(m.name))
       .map((m) => m.name.replace(/^models\//, ""))
       .sort((x, y) => score(y) - score(x));
   } catch { /* use the defaults */ }
-  found = { at: Date.now(), list: [...new Set([process.env.LIVE_STREAM_MODEL || "", ...list, ...DEFAULTS].filter(Boolean))] };
+  found = { at: Date.now(), list: [...new Set([process.env.LIVE_STREAM_MODEL || "", ...list, ...DEFAULTS].filter((n) => n && !/gemini-2\.0/.test(n)))] };
   return found.list;
 }
 
