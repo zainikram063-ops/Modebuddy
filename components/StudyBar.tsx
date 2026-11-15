@@ -103,7 +103,7 @@ export default function StudyBar({ value, onChange, onTool, onMaterial, onLectur
 
             <small>Your material</small>
             <button type="button" role="menuitem" onClick={() => { setOpen(false); onMaterial(); }}>
-              <BookOpen {...ic} /><span><b>Course material</b><em>Slides &amp; notes Study mode cites</em></span>
+              <BookOpen {...ic} /><span><b>Course material</b><em>Slides &amp; notes Edura cites</em></span>
             </button>
             <button type="button" role="menuitem" onClick={() => { setOpen(false); onLecture(); }}>
               <Mic {...ic} /><span><b>Lecture → notes</b><em>Recording to notes + flashcards</em></span>

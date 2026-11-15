@@ -13,7 +13,7 @@ export function warmVoice() {
 // (the Mac voice reports its end with a "spoke" event instead).
 export function talk(text: string, onStart?: () => void, onEnd?: () => void) {
   hush();
-  const t = text.trim().slice(0, 600);
+  const t = sayNames(text).trim().slice(0, 600);
   if (!t) return;
   const mac = () => { void desktop()?.live?.speak(t); onStart?.(); };
   if (cloud === false) { mac(); return; }
@@ -24,6 +24,11 @@ export function talk(text: string, onStart?: () => void, onEnd?: () => void) {
   a.onended = () => { if (current === a) { current = null; onEnd?.(); } };
   a.onerror = fallback;
   a.play().catch(fallback);
+}
+
+// Say the mode names the way they're meant to sound
+function sayNames(s: string) {
+  return s.replace(/\bKodra\b/gi, "Koh-dra").replace(/\bEdura\b/gi, "Edu-ra");
 }
 
 export function hush() {

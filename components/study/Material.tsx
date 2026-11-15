@@ -69,7 +69,7 @@ export default function Material({ onClose, toast }: { onClose: () => void; toas
           <b>Course material</b>
           <button type="button" className="mat-x" onClick={onClose} aria-label="Close"><X size={16} strokeWidth={2} /></button>
         </header>
-        <p className="mat-sub">Study mode reads these in every Study chat, uses your course&apos;s terms and cites them by name.</p>
+        <p className="mat-sub">Edura reads these in every Edura chat, uses your course&apos;s terms and cites them by name.</p>
 
         <button
           type="button"

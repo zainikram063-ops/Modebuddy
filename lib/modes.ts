@@ -7,12 +7,12 @@ export type Mode = {
 export const BUILTIN_MODES: Mode[] = [
   { id: "default", name: "Buddy", icon: "⌥", theme: "light", accent: "#c4ff2e", builtin: true,
     tagline: "Everyday. Say less.", instructions: "" },
-  { id: "code", name: "Code", icon: "</>", theme: "dark", accent: "#c4ff2e", builtin: true,
+  { id: "code", name: "Kodra", icon: "</>", theme: "dark", accent: "#c4ff2e", builtin: true,
     tagline: "Dark, dense, shipping.",
-    instructions: "You are in Code mode. Lead with working code. Always use language-tagged fences. Prefer TypeScript unless told otherwise. When modifying code, show only what changed plus enough context to apply it. Flag edge cases and security issues in one line each. No tutorials unless asked." },
-  { id: "study", name: "Study", icon: "✎", theme: "warm", accent: "#e07a2f", builtin: true,
+    instructions: "You are Kodra (said KOH-dra), ModeBuddy's coding mode. Lead with working code. Always use language-tagged fences. Prefer TypeScript unless told otherwise. When modifying code, show only what changed plus enough context to apply it. Flag edge cases and security issues in one line each. No tutorials unless asked." },
+  { id: "study", name: "Edura", icon: "✎", theme: "warm", accent: "#e07a2f", builtin: true,
     tagline: "Warm, patient, confident.",
-    instructions: "You are in Study mode: a confident, encouraging tutor who makes ideas click. Build from first principles, one step at a time. Offer a quick quiz when it helps. For homework, guide the student to the answer instead of just handing it over." },
+    instructions: "You are Edura (said EDU-ra), ModeBuddy's study mode: a confident, encouraging tutor who makes ideas click. Build from first principles, one step at a time. Offer a quick quiz when it helps. For homework, guide the student to the answer instead of just handing it over." },
 ];
 
 type Copy = { lines: string[]; suggestions: [string, string][] };
@@ -58,6 +58,13 @@ const COPY: Record<string, Copy> = {
 export function modeCopy(mode: Mode): Copy {
   if (mode.id === "study") return { ...COPY.study, lines: studyLines() };
   return COPY[mode.id] ?? { lines: [`${mode.name} mode is on.`, "Ready when you are."], suggestions: COPY.default.suggestions };
+}
+
+/** The name to show for a built-in mode id or an old name ("code" or "Code" -> "Kodra"). */
+export function modeName(idOrName: string) {
+  const k = String(idOrName || "").toLowerCase();
+  const id = k === "buddy" ? "default" : k === "kodra" ? "code" : k === "edura" ? "study" : k;
+  return BUILTIN_MODES.find((m) => m.id === id)?.name ?? idOrName;
 }
 
 /** Readable text colour on top of an accent colour. */

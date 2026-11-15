@@ -122,7 +122,7 @@ export function stopSpeaking() { if (hasTTS()) window.speechSynthesis.cancel(); 
 export function speak(md: string, onDone?: () => void) {
   if (!hasTTS()) { onDone?.(); return; }
   window.speechSynthesis.cancel();
-  const text = cleanForSpeech(md);
+  const text = cleanForSpeech(md).replace(/\bKodra\b/gi, "Koh-dra").replace(/\bEdura\b/gi, "Edu-ra");
   if (!text) { onDone?.(); return; }
 
   // Chrome cuts off long utterances, so speak in chunks

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { modeName } from "@/lib/modes";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import ReactMarkdown from "react-markdown";
@@ -24,7 +25,7 @@ export default async function LiveHistory() {
         {rows.map((r) => (
           <details key={r.id} className="lv-h">
             <summary>
-              <span className={`lv-h-mode ${r.mode}`}>{r.mode}</span>
+              <span className={`lv-h-mode ${r.mode}`}>{modeName(r.mode)}</span>
               <b>{r.question || "(question)"}</b>
               <time>{new Date(r.created_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</time>
             </summary>

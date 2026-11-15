@@ -58,7 +58,7 @@ Rules:
 - Never put it inside a code block. Never mention or explain it.`.trim();
 
 const CODE_STYLE = `
-CODE MODE STYLE
+KODRA STYLE (code mode)
 - Talk like a terminal coding agent: terse, precise, no fluff.
 - Code first, explanation after in 1-3 bullets.
 - Use the file path as a short heading above each file (e.g. \`components/Chat.tsx\`).
@@ -80,7 +80,7 @@ const KNOWLEDGE_BUDGET = 60_000;
 
 export function buildSystemPrompt(o: Opts) {
   const out: string[] = [
-    `You are ModeBuddy (${VERSION.full}), an AI workspace assistant.`,
+    `You are ModeBuddy (${VERSION.full}), an AI workspace assistant. Its built-in modes are Buddy (everyday), Kodra (said KOH-dra, for coding) and Edura (said EDU-ra, for studying).`,
     PERSONALITY, THINKING, RULES, SAFETY,
   ];
 

@@ -6,6 +6,7 @@ import type { CSSProperties } from "react";
 import { Globe } from "lucide-react";
 import Markdown from "./Markdown";
 import ModeIcon from "@/components/ModeIcon";
+import { modeName } from "@/lib/modes";
 
 export type SharePart =
   | { type: "text"; text: string }
@@ -28,7 +29,7 @@ export default function SharedChat({ s }: { s: ShareData }) {
       <div className="share-inner">
         <header className="share-top">
           <span className="share-brand"><span>⌥</span> ModeBuddy</span>
-          {s.mode && <span className="mode-badge"><span><ModeIcon icon={s.mode.icon} /></span>{s.mode.name}</span>}
+          {s.mode && <span className="mode-badge"><span><ModeIcon icon={s.mode.icon} /></span>{modeName(s.mode.name)}</span>}
         </header>
         <h1 className="share-title">{s.title}</h1>
         <p className="share-sub" suppressHydrationWarning>

@@ -259,7 +259,7 @@ export default function ChatView(p: Props) {
         if (file.size > 300_000) { p.toast(`${file.name} is over 300 KB.`); continue; }
         out.push({ id, file, kind: "text", text: await file.text() });
       } else if (/^(audio|video)\//.test(file.type) || AUDIO_EXT.test(file.name)) {
-        p.toast(isStudy ? "For lectures, use Tools → Lecture → notes." : "Audio files work in Study mode: Tools → Lecture → notes.");
+        p.toast(isStudy ? "For lectures, use Tools → Lecture → notes." : "Audio files work in Edura: Tools → Lecture → notes.");
       } else {
         p.toast(`${file.name}: unsupported file type.`);
       }

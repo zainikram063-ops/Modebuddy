@@ -11,14 +11,14 @@ export const LIVE_MODES: Record<LiveMode["id"], LiveMode> = {
   },
   "code": {
     "id": "code",
-    "name": "Code",
+    "name": "Kodra",
     "color": "#58a6ff",
     "bg": "#0d1117",
     "icon": ""
   },
   "study": {
     "id": "study",
-    "name": "Study",
+    "name": "Edura",
     "color": "#e07a2f",
     "bg": "#14110e",
     "icon": ""
@@ -26,4 +26,4 @@ export const LIVE_MODES: Record<LiveMode["id"], LiveMode> = {
 };
 
 export const liveMode = (m: string): LiveMode =>
-  /code|dev/.test(m) ? LIVE_MODES.code : /study|learn/.test(m) ? LIVE_MODES.study : LIVE_MODES.buddy;
+  /code|dev|kodra/.test(m) ? LIVE_MODES.code : /study|learn|edura/.test(m) ? LIVE_MODES.study : LIVE_MODES.buddy;
