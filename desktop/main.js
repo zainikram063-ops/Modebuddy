@@ -445,11 +445,12 @@ async function mbFront() {
   const r = await mbSh("/bin/sh", ["-c", "lsappinfo info -only name \"$(lsappinfo front)\""], 1500);
   return ((/"LSDisplayName"="([^"]+)"/.exec(r.out) || [])[1] || "").toLowerCase();
 }
+// Phase 2: faster steps (no waiting for the ghost cursor, shorter pauses)
 async function mbWaitFront(name, ms = 7000) {
   const want = String(name).toLowerCase().replace(/\.app$/, "");
-  for (const t = Date.now(); Date.now() - t < ms; await mbSleep(150)) {
+  for (const t = Date.now(); Date.now() - t < ms; await mbSleep(80)) {
     const f = await mbFront();
-    if (f && (f.includes(want) || want.includes(f))) { await mbSleep(500); return true; }
+    if (f && (f.includes(want) || want.includes(f))) { await mbSleep(150); return true; }
   }
   return false;
 }
@@ -502,13 +503,13 @@ function mbGhostOff() {
 async function mbAct(s) {
   const b = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).bounds;
   switch (s.do) {
-    case "open_app": await mbGhostTo(b.x + b.width / 2, b.y + b.height - 36, "click"); await mbSh("open", ["-a", String(s.app)]); return { ok: await mbWaitFront(s.app) };
-    case "open_url": await mbGhostTo(b.x + b.width / 2, b.y + 70, "click"); await mbSh("open", s.app ? ["-a", String(s.app), String(s.url)] : [String(s.url)]); if (s.app) await mbWaitFront(s.app); await mbSleep(1400); return { ok: true };
-    case "type": await mbGhostTo(b.x + b.width / 2, b.y + b.height * 0.6, "type"); await mbType(s.text || ""); return { ok: true };
-    case "key": await mbKeys(s.keys || ""); await mbSleep(300); return { ok: true };
-    case "click": { const x = b.x + Number(s.x) * b.width, y = b.y + Number(s.y) * b.height; await mbGhostTo(x, y, "click"); await mbClick(Math.round(x), Math.round(y)); await mbSleep(450); return { ok: true }; }
+    case "open_app": mbGhostTo(b.x + b.width / 2, b.y + b.height - 36, "click").catch(() => {}); await mbSh("open", ["-a", String(s.app)]); return { ok: await mbWaitFront(s.app) };
+    case "open_url": mbGhostTo(b.x + b.width / 2, b.y + 70, "click").catch(() => {}); await mbSh("open", s.app ? ["-a", String(s.app), String(s.url)] : [String(s.url)]); if (s.app) await mbWaitFront(s.app); await mbSleep(600); return { ok: true };
+    case "type": mbGhostTo(b.x + b.width / 2, b.y + b.height * 0.6, "type").catch(() => {}); await mbType(s.text || ""); return { ok: true };
+    case "key": await mbKeys(s.keys || ""); await mbSleep(120); return { ok: true };
+    case "click": { const x = b.x + Number(s.x) * b.width, y = b.y + Number(s.y) * b.height; await mbGhostTo(x, y, "click"); await mbClick(Math.round(x), Math.round(y)); await mbSleep(250); return { ok: true }; }
     case "find": return await mbFind(s);
-    case "open_path": { const p = String(s.path || "").replace(/^~(?=\/|$)/, app.getPath("home")); await mbGhostTo(b.x + b.width / 2, b.y + b.height - 36, "click"); const r = await mbSh("open", s.app ? ["-a", String(s.app), p] : [p]); await mbSleep(900); return { ok: !r.err, error: r.err ? "could not open it" : undefined }; }
+    case "open_path": { const p = String(s.path || "").replace(/^~(?=\/|$)/, app.getPath("home")); mbGhostTo(b.x + b.width / 2, b.y + b.height - 36, "click").catch(() => {}); const r = await mbSh("open", s.app ? ["-a", String(s.app), p] : [p]); await mbSleep(500); return { ok: !r.err, error: r.err ? "could not open it" : undefined }; }
     case "wait": await mbSleep(Math.min(8000, Number(s.ms) || 800)); return { ok: true };
     case "done": mbGhostOff(); return { ok: true };
   }

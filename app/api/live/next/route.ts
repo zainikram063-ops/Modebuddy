@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { liveModels } from "../../../../lib/platform";
+import { tierOf } from "../../../../lib/models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +28,12 @@ Rules:
 - When the task is complete, reply {"done": true}.`;
 
 type H = { label: string; state: string; found?: string[] };
+
+// The newest Gemini Flash first (better at reading the screen), with backups
+async function checkers() {
+  const list = await Promise.race([liveModels().catch(() => []), new Promise<[]>((ok) => setTimeout(() => ok([]), 1500))]);
+  return [...new Set([...list.map((m) => m.id).filter((id) => tierOf(id) === 1).slice(0, 1), "gemini-2.5-flash", "gemini-flash-latest"])];
+}
 
 export async function POST(req: Request) {
   try {
@@ -55,13 +63,13 @@ Done so far:
 ${done || "nothing yet"}
 Installed apps: ${(installed || []).slice(0, 250).join(", ")}`;
     const parts = [...(image ? [{ inlineData: { mimeType: "image/jpeg", data: image } }] : []), { text }];
-    for (const model of ["gemini-2.5-flash", "gemini-flash-latest"]) {
+    for (const model of await checkers()) {
       try {
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": KEY },
-          body: JSON.stringify({ systemInstruction: { parts: [{ text: RULES }] }, contents: [{ role: "user", parts }], generationConfig: { temperature: 0.1, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 256 } } }),
-          signal: AbortSignal.timeout(25000),
+          body: JSON.stringify({ systemInstruction: { parts: [{ text: RULES }] }, contents: [{ role: "user", parts }], generationConfig: { temperature: 0.1, responseMimeType: "application/json", thinkingConfig: /gemini-2\.5/.test(model) ? { thinkingBudget: 256 } : { thinkingLevel: "low" } } }),
+          signal: AbortSignal.timeout(12000),
         });
         if (!r.ok) continue;
         const j = await r.json();
