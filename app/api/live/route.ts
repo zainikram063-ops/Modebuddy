@@ -15,7 +15,7 @@ const LIMIT = Number(process.env.LIVE_DAILY_LIMIT || 100);
 const TASKY = /\b(open|launch|start|go to|search|google|look up|find|type|write|click|press|play|close|switch|send|show me|take me)\b/i;
 
 type Turn = { q?: string; a?: string };
-type Body = { text?: string; audio?: string; image?: string | null; history?: Turn[]; modes?: CustomMode[]; modeId?: string; installed?: string[]; app?: string };
+type Body = { text?: string; audio?: string; image?: string | null; history?: Turn[]; modes?: CustomMode[]; modeId?: string; installed?: string[]; app?: string; log?: boolean; answer?: string };
 type SB = ReturnType<typeof createServerClient>;
 
 // The smart brain: the newest Gemini Flash this key can use, with backups (never a retired 2.0 model)
@@ -91,6 +91,8 @@ export async function POST(req: Request) {
     const a = await who();
     const tAuth = Date.now() - t0;
     if (!a) return Response.json({ error: "Please sign in to ModeBuddy first." }, { status: 401 });
+    // A simple command already done on the Mac: just save it to Live history
+    if (b.log) { await save(a.sb, a.uid, words, String(b.answer || "")).catch(() => {}); return new Response(null, { status: 204 }); }
     const day = new Date();
     day.setUTCHours(0, 0, 0, 0);
     const [count, mem, mode] = await Promise.all([

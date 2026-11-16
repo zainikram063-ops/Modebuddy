@@ -1,5 +1,6 @@
 // Speaks answers with your ElevenLabs / Fish Audio voice, or the Mac voice if no cloud voice is set up
 import { desktop } from "../desktop";
+import "./local"; // simple commands are answered right here, with no internet round trip
 
 let cloud: boolean | null = null;
 let current: HTMLAudioElement | null = null;
