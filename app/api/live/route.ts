@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { SYSTEM, liveContext, type CustomMode, type LiveMem } from "../../../lib/liveSystem";
 import { liveModels } from "../../../lib/platform";
 import { tierOf } from "../../../lib/models";
+import { reflex } from "../../../lib/live/reflex";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,14 +11,14 @@ export const maxDuration = 60;
 
 const KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
 const LIMIT = Number(process.env.LIVE_DAILY_LIMIT || 100);
-// Requests that sound like "do something on my Mac" get a little thinking time and the installed apps list
+// Requests that sound like "do something on my Mac" get a little thinking time
 const TASKY = /\b(open|launch|start|go to|search|google|look up|find|type|write|click|press|play|close|switch|send|show me|take me)\b/i;
 
 type Turn = { q?: string; a?: string };
 type Body = { text?: string; audio?: string; image?: string | null; history?: Turn[]; modes?: CustomMode[]; modeId?: string; installed?: string[]; app?: string };
 type SB = ReturnType<typeof createServerClient>;
 
-// The smart brain: the newest Gemini Flash this key can use, with older ones as backup
+// The smart brain: the newest Gemini Flash this key can use, with backups (never a retired 2.0 model)
 async function brains() {
   const ids = (await liveModels().catch(() => [])).map((m) => m.id);
   const flash = ids.filter((id) => tierOf(id) === 1).slice(0, 2);
@@ -95,13 +96,26 @@ export async function POST(req: Request) {
       b.modeId ? Promise.resolve(a.sb.from("mode_apps").select("name, prompt").eq("mode_id", String(b.modeId)).maybeSingle()).then((r) => (r.data ? { name: String(r.data.name), prompt: String(r.data.prompt || "") } : null)).catch(() => null) : Promise.resolve(null),
     ]);
     if (count >= LIMIT) return Response.json({ error: "You have used all of today's Live questions. They reset at midnight (UTC)." }, { status: 429 });
+    const installed = Array.isArray(b.installed) ? b.installed.map(String) : [];
+
+    // Reflexes: common commands are answered instantly, without the AI
+    const hit = words ? reflex(words, installed, mem.routines || []) : null;
+    if (hit) {
+      const full = (hit.use ? `SAY: ${hit.say}\nUSE: ${hit.use}\n` : `DO: ${JSON.stringify(hit.steps || [])}\nSAY: ${hit.say}\n`) + `---\n${hit.say}`;
+      save(a.sb, a.uid, words, full).catch(() => {});
+      console.log(`[live] reflex after ${Date.now() - t0}ms: ${words}`);
+      return new Response(full, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Live-Model": "reflex" } });
+    }
 
     const task = !words || TASKY.test(words);
     const past = (Array.isArray(b.history) ? b.history : []).slice(-4).flatMap((t) => [
       { role: "user", parts: [{ text: String(t.q || "(question)").slice(0, 2000) }] },
       { role: "model", parts: [{ text: String(t.a || "").slice(0, 6000) }] },
     ]);
-    const about = (b.app ? `\nApp in front: ${String(b.app).slice(0, 60)}` : "") + (task && Array.isArray(b.installed) && b.installed.length ? "\nApps installed on this Mac: " + b.installed.slice(0, 250).join(", ") : "");
+    // Only the apps that match what you said (not the whole list), so the AI starts sooner
+    const keys = words.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
+    const near = words ? installed.filter((n) => keys.some((w) => n.toLowerCase().includes(w))).slice(0, 20) : installed.slice(0, 250);
+    const about = (b.app ? `\nApp in front: ${String(b.app).slice(0, 60)}` : "") + (task && near.length ? "\nInstalled apps: " + near.join(", ") : "");
     const parts: Record<string, unknown>[] = [];
     if (b.image) parts.push({ inlineData: { mimeType: "image/jpeg", data: b.image } });
     if (words) parts.push({ text: (b.image ? "This is my screen right now.\n" : "") + `What I said (from speech, may have small mistakes): "${words}"` + about });

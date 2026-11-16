@@ -40,7 +40,9 @@ Reply with the full updated memory as JSON only: {"routines": [{"name": "short n
 export async function GET() {
   const c = await client();
   if (!c) return Response.json({ routines: [], facts: [] }, { status: 401 });
-  return Response.json(await load(c.sb, c.uid));
+  const m = await load(c.sb, c.uid);
+  // Routine steps already worked before, so ModeBuddy trusts them without a final screen check
+  return Response.json({ ...m, routines: m.routines.map((r) => ({ ...r, steps: (Array.isArray(r.steps) ? r.steps : []).map((x) => (x && typeof x === "object" ? { ...(x as object), sure: true } : x)) })) });
 }
 
 export async function PUT(req: Request) {

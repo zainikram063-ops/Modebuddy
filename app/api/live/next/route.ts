@@ -37,7 +37,18 @@ export async function POST(req: Request) {
     );
     if (!(await sb.auth.getUser()).data.user) return Response.json({ done: true, steps: [] }, { status: 401 });
     const { goal, plan, history, image, installed } = (await req.json().catch(() => ({}))) as { goal?: string; plan?: unknown[]; history?: H[]; image?: string | null; installed?: string[] };
-    const done = (history || []).map((h, i) => `${i + 1}. ${h.label} (${h.state === "done" ? "worked" : "failed"})` + (h.found?.length ? "\n   Found:\n" + h.found.map((f) => "   - " + f).join("\n") : "")).join("\n");
+
+    // Plans ModeBuddy is sure about (reflexes, routines that worked before) don't need the AI to look at the screen
+    const steps = (Array.isArray(plan) ? plan : []) as { sure?: boolean }[];
+    const hist = Array.isArray(history) ? history : [];
+    if (steps.length && steps.every((s) => s && s.sure) && hist.length && hist.every((h) => h.state === "done")) {
+      const last = hist[hist.length - 1];
+      if (!/^Find /.test(last.label)) return Response.json({ done: true, last: false, steps: [] });
+      const top = (last.found || []).map((f) => (/^(?:folder|file): (.+)$/.exec(f) || [])[1]).find(Boolean);
+      if (top) return Response.json({ done: false, last: true, steps: [{ do: "open_path", path: top }] });
+    }
+
+    const done = hist.map((h, i) => `${i + 1}. ${h.label} (${h.state === "done" ? "worked" : "failed"})` + (h.found?.length ? "\n   Found:\n" + h.found.map((f) => "   - " + f).join("\n") : "")).join("\n");
     const text = `Task: ${String(goal || "").slice(0, 1500)}
 First plan: ${JSON.stringify(plan || []).slice(0, 3000)}
 Done so far:
