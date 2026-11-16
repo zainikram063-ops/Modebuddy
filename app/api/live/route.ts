@@ -106,7 +106,7 @@ export async function POST(req: Request) {
     // Reflexes: common commands are answered instantly, without the AI
     const hit = words ? reflex(words, installed, mem.routines || []) : null;
     if (hit) {
-      const full = (hit.use ? `SAY: ${hit.say}\nUSE: ${hit.use}\n` : `DO: ${JSON.stringify(hit.steps || [])}\nSAY: ${hit.say}\n`) + `---\n${hit.say}`;
+      const full = (hit.use ? `SAY: ${hit.say}\nUSE: ${hit.use}\n` : `SAY: ${hit.say}\nDO: ${JSON.stringify(hit.steps || [])}\n`) + `---\n${hit.say}`;
       save(a.sb, a.uid, words, full).catch(() => {});
       console.log(`[live] reflex after ${Date.now() - t0}ms (sign-in ${tAuth}ms): ${words}`);
       return new Response(full, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Live-Model": "reflex" } });

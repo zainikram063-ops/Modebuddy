@@ -26,7 +26,7 @@ if (w && !w.mbLocal) {
         const hit = !b.log && words ? reflex(words, Array.isArray(b.installed) ? b.installed : [], routines) : null;
         loadRoutines();
         if (hit) {
-          const full = (hit.use ? `SAY: ${hit.say}\nUSE: ${hit.use}\n` : `DO: ${JSON.stringify(hit.steps || [])}\nSAY: ${hit.say}\n`) + `---\n${hit.say}`;
+          const full = (hit.use ? `SAY: ${hit.say}\nUSE: ${hit.use}\n` : `SAY: ${hit.say}\nDO: ${JSON.stringify(hit.steps || [])}\n`) + `---\n${hit.say}`;
           // Saved to Live history in the background
           real("/api/live", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ log: true, text: words, answer: full }) }).catch(() => {});
           return new Response(full, { headers: { "Content-Type": "text/plain; charset=utf-8", "X-Live-Model": "reflex" } });
