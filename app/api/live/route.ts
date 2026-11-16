@@ -86,7 +86,10 @@ export async function POST(req: Request) {
     const b = (await req.json().catch(() => ({}))) as Body;
     const words = String(b.text || "").replace(/\s+/g, " ").trim().slice(0, 2000);
     if (!words && !b.audio) return Response.json({ error: "I did not catch that. Hold ⌘⌥ and try again." }, { status: 400 });
-    const [a, models] = await Promise.all([who(), brains()]);
+    // Look up the AI models in the background: reflexes don't need them, and a slow answer from Google can't hold anything up
+    const modelsP = Promise.race([brains().catch((): string[] => []), new Promise<string[]>((ok) => setTimeout(() => ok([]), 2500))]).then((m) => (m.length ? m : ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"]));
+    const a = await who();
+    const tAuth = Date.now() - t0;
     if (!a) return Response.json({ error: "Please sign in to ModeBuddy first." }, { status: 401 });
     const day = new Date();
     day.setUTCHours(0, 0, 0, 0);
@@ -103,7 +106,7 @@ export async function POST(req: Request) {
     if (hit) {
       const full = (hit.use ? `SAY: ${hit.say}\nUSE: ${hit.use}\n` : `DO: ${JSON.stringify(hit.steps || [])}\nSAY: ${hit.say}\n`) + `---\n${hit.say}`;
       save(a.sb, a.uid, words, full).catch(() => {});
-      console.log(`[live] reflex after ${Date.now() - t0}ms: ${words}`);
+      console.log(`[live] reflex after ${Date.now() - t0}ms (sign-in ${tAuth}ms): ${words}`);
       return new Response(full, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Live-Model": "reflex" } });
     }
 
@@ -126,6 +129,7 @@ export async function POST(req: Request) {
       generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
     };
 
+    const models = await modelsP;
     let res: Response | null = null;
     let used = "";
     const errors: string[] = [];
