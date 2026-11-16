@@ -7,7 +7,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --mac dir"
+    "build": "electron-builder --mac dir",
+    "prebuild": "swiftc -O native/mbspeech.swift -o native/mbspeech"
   },
   "build": {
     "appId": "app.modebuddy.desktop",
@@ -34,13 +35,20 @@
         "NSAppleEventsUsageDescription": "ModeBuddy checks which website you are on to pick the right mode.",
         "NSDesktopFolderUsageDescription": "ModeBuddy opens the files and folders you ask it to.",
         "NSDocumentsFolderUsageDescription": "ModeBuddy opens the files and folders you ask it to.",
-        "NSDownloadsFolderUsageDescription": "ModeBuddy opens the files and folders you ask it to."
+        "NSDownloadsFolderUsageDescription": "ModeBuddy opens the files and folders you ask it to.",
+        "NSSpeechRecognitionUsageDescription": "ModeBuddy turns your voice into text while you hold Command and Option."
       }
     },
     "asarUnpack": [
       "node_modules/uiohook-napi/**"
     ],
-    "npmRebuild": false
+    "npmRebuild": false,
+    "extraResources": [
+      {
+        "from": "native/mbspeech",
+        "to": "mbspeech"
+      }
+    ]
   },
   "devDependencies": {
     "electron": "^45.2.3",

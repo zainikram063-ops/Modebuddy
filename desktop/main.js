@@ -296,7 +296,7 @@ function stopHook() {
   meta = alt = false;
 }
 
-function beginListen() {
+function beginListen() { mbSpeechSend("start");
   holdTimer = null;
   if (!meta || !alt || dirty || listening || !settings.live) return;
   listening = true;
@@ -312,7 +312,7 @@ function beginListen() {
   watchdog = setTimeout(() => { if (listening) endListen(); }, 60000);
 }
 
-async function endListen() {
+async function endListen() { mbSpeechSend("stop");
   if (!listening) return;
   listening = false;
   clearTimeout(watchdog);
@@ -539,3 +539,24 @@ async function mbFind(q) {
   items.sort((a, b) => score(b) - score(a));
   return { ok: items.length > 0, items: items.slice(0, 8).map(({ path, folder }) => ({ path, folder })) };
 }
+
+// Phase 3: Apple speech-to-text on the Mac, so your words are ready the moment you let go.
+// A tiny helper (native/mbspeech) listens only while you hold ⌘⌥ and sends the words to Live.
+let mbSp = null, mbSpBuf = "";
+function mbSpeech() {
+  if (mbSp) return mbSp;
+  const bin = app.isPackaged ? require("path").join(process.resourcesPath, "mbspeech") : require("path").join(__dirname, "native", "mbspeech");
+  if (!require("fs").existsSync(bin)) return null;
+  try { mbSp = require("child_process").spawn(bin, [], { stdio: ["pipe", "pipe", "ignore"] }); } catch { mbSp = null; return null; }
+  mbSp.on("exit", () => { mbSp = null; });
+  mbSp.stdout.on("data", (d) => {
+    mbSpBuf += d.toString();
+    const lines = mbSpBuf.split("\n");
+    mbSpBuf = lines.pop() || "";
+    for (const l of lines) if (l.trim()) for (const w of BrowserWindow.getAllWindows()) w.webContents.executeJavaScript("window.__mbWords && window.__mbWords(" + JSON.stringify(l) + ")").catch(() => {});
+  });
+  Promise.resolve(typeof mbInstalled === "function" ? mbInstalled() : []).then((list) => mbSpeechSend("hints " + JSON.stringify(["ModeBuddy", "Kodra", "Edura", "Claude", ...(Array.isArray(list) ? list : [])].slice(0, 100)))).catch(() => {});
+  return mbSp;
+}
+function mbSpeechSend(cmd) { const p = mbSpeech(); if (p && p.stdin.writable) p.stdin.write(cmd + "\n"); }
+app.whenReady().then(() => mbSpeech());

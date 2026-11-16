@@ -13,7 +13,7 @@ export type Ears = {
   close: () => void;
 };
 
-export function openEars(pass: Promise<Pass>): Ears {
+function openGoogleEars(pass: Promise<Pass>): Ears {
   let s: Session | null = null;
   let ready = false, dead = false, final = false, replied = false;
   let words = "", lastWord = 0;
@@ -96,5 +96,44 @@ export function openEars(pass: Promise<Pass>): Ears {
       }, 40);
     }),
     close,
+  };
+}
+
+// Phase 3: Apple speech-to-text from the Mac app. Whichever has your words first wins: Apple's (usually
+// about 0.2s after you let go) or Google's. Without the Mac helper, Google's ears work as before.
+const local = { words: "", final: false, poke: null as (() => void) | null };
+if (typeof window !== "undefined") {
+  (window as unknown as { __mbWords?: (line: string) => void }).__mbWords = (line: string) => {
+    try {
+      const m = JSON.parse(line) as { partial?: string; final?: string };
+      if (typeof m.partial === "string") local.words = m.partial;
+      if (typeof m.final === "string") { if (m.final) local.words = m.final; local.final = true; }
+      local.poke?.();
+    } catch { /* not for us */ }
+  };
+}
+
+export function openEars(pass: Promise<Pass>): Ears {
+  local.words = "";
+  local.final = false;
+  const g = openGoogleEars(pass);
+  return {
+    hear: (...a: Parameters<Ears["hear"]>) => g.hear(...a),
+    close: () => g.close(),
+    finish: () => new Promise<string>((resolve) => {
+      const t0 = Date.now();
+      let done = false, gw = "", gDone = false;
+      const end = (w: string) => { if (done) return; done = true; local.poke = null; clearInterval(iv); resolve(w.trim()); };
+      const check = () => {
+        const t = Date.now() - t0;
+        if (local.final && local.words.trim()) return end(local.words);
+        if (gDone && gw.trim()) return end(gw);
+        if ((gDone && (local.final || t > 900)) || t > 1600) end(local.words || gw);
+      };
+      g.finish().then((w) => { gw = w; gDone = true; check(); }, () => { gDone = true; check(); });
+      local.poke = check;
+      const iv = setInterval(check, 40);
+      check();
+    }),
   };
 }
