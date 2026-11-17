@@ -4,12 +4,13 @@ import { reflex } from "./reflex";
 
 type Routine = { name: string; triggers?: string[] };
 let routines: Routine[] = [];
+let facts: string[] = [];
 let loaded = 0;
 // Your routines, so "start everything up" also works instantly (refreshed every 5 minutes)
 function loadRoutines() {
   if (Date.now() - loaded < 300000) return;
   loaded = Date.now();
-  fetch("/api/live/learn", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((m: { routines?: Routine[] } | null) => { if (m && Array.isArray(m.routines)) routines = m.routines; }).catch(() => {});
+  fetch("/api/live/learn", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((m: { routines?: Routine[]; facts?: string[] } | null) => { if (m && Array.isArray(m.routines)) routines = m.routines; if (m && Array.isArray(m.facts)) facts = m.facts.map(String); }).catch(() => {});
 }
 
 const w = typeof window !== "undefined" ? (window as unknown as { mbLocal?: boolean }) : null;
@@ -23,7 +24,7 @@ if (w && !w.mbLocal) {
       try {
         const b = JSON.parse(init.body) as { text?: string; installed?: string[]; log?: boolean };
         const words = String(b.text || "").trim();
-        const hit = !b.log && words ? reflex(words, Array.isArray(b.installed) ? b.installed : [], routines) : null;
+        const hit = !b.log && words ? reflex(words, Array.isArray(b.installed) ? b.installed : [], routines, facts) : null;
         loadRoutines();
         if (hit) {
           const full = (hit.use ? `SAY: ${hit.say}\nUSE: ${hit.use}\n` : `SAY: ${hit.say}\nDO: ${JSON.stringify(hit.steps || [])}\n`) + `---\n${hit.say}`;
@@ -33,6 +34,7 @@ if (w && !w.mbLocal) {
         }
       } catch { /* not a simple command: ask the server as normal */ }
     }
-    return real(input, init);
+    // After ModeBuddy learns something, pick it up right away
+    return real(input, init).then((r) => { if (r.headers.get("X-Live-Learned")) { loaded = 0; loadRoutines(); } return r; });
   };
 }

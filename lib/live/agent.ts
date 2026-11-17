@@ -1,3 +1,4 @@
+import { chime } from "./chime";
 // Live tasks: ModeBuddy uses your Mac step by step, and only looks at the screen when it needs to
 import { desktop } from "../desktop";
 import { shrink } from "./audio";
@@ -83,7 +84,7 @@ export function openEarly(raw: Step, heard: string, showing: () => boolean) {
 }
 
 // Runs the plan straight through; only looks at the screen if something fails, plus once at the end
-export async function runTask(list: Step[], goal: string, routine: string, since: number, show: (rows: StepView[]) => void) {
+async function runTaskInner(list: Step[], goal: string, routine: string, since: number, show: (rows: StepView[]) => void) {
   const A = actor();
   if (!A) return false;
   stopped = false;
@@ -198,4 +199,13 @@ function wrongApp(goal: string, list: Step[]) {
   const words = goal.toLowerCase().split(/[^a-z0-9.]+/).filter(Boolean);
   const i = words.indexOf(String(first.app || "").toLowerCase().split(/\s+/)[0]);
   return i >= 0 && words.slice(i + 1, i + 4).some((w) => FILEY.test(w));
+}
+
+// A chime when a task is finished: bright if it worked, soft and low if it didn't
+export async function runTask(list: Step[], goal: string, routine: string, since: number, show: (rows: StepView[]) => void) {
+  let rows: StepView[] = [];
+  const r = await runTaskInner(list, goal, routine, since, (v) => { rows = v; show(v); });
+  const end = String((rows[rows.length - 1] as unknown as { state?: unknown } | undefined)?.state || "");
+  if (rows.length > 1) { if (/fail/i.test(end)) chime("fail"); else if (/done/i.test(end)) chime("done"); }
+  return r;
 }

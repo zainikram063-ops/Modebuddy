@@ -3,7 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { SYSTEM, liveContext, type CustomMode, type LiveMem } from "../../../lib/liveSystem";
 import { liveModels } from "../../../lib/platform";
 import { tierOf } from "../../../lib/models";
-import { reflex } from "../../../lib/live/reflex";
+import { reflex, correction } from "../../../lib/live/reflex";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -102,9 +102,25 @@ export async function POST(req: Request) {
     ]);
     if (count >= LIMIT) return Response.json({ error: "You have used all of today's Live questions. They reset at midnight (UTC)." }, { status: 429 });
     const installed = Array.isArray(b.installed) ? b.installed.map(String) : [];
+    // Learning from mistakes: "no, I meant Chrome" right after "open browser" teaches ModeBuddy for next time
+    const prev = String((Array.isArray(b.history) ? b.history : []).slice(-1)[0]?.q || "");
+    const fix = words ? correction(words, prev) : null;
+    if (fix) {
+      const facts = [`When I say "${fix.heard}" I mean "${fix.meant}".`, ...(mem.facts || []).filter((f) => !String(f).startsWith(`When I say "${fix.heard}"`))].slice(0, 50);
+      const redo = reflex(fix.command, installed, mem.routines || [], facts);
+      if (redo?.steps) {
+        const data = { ...mem, facts };
+        const has = await a.sb.from("live_memory").select("user_id").eq("user_id", a.uid).maybeSingle();
+        await (has.data ? a.sb.from("live_memory").update({ data }).eq("user_id", a.uid) : a.sb.from("live_memory").insert({ user_id: a.uid, data }));
+        const say = "Got it, " + redo.say.charAt(0).toLowerCase() + redo.say.slice(1) + " I'll remember that.";
+        const full = `DO: ${JSON.stringify(redo.steps)}\nSAY: ${say}\n---\nGot it. From now on, "${fix.heard}" means ${fix.meant}.`;
+        save(a.sb, a.uid, words, full).catch(() => {});
+        return new Response(full, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Live-Model": "reflex", "X-Live-Learned": "1" } });
+      }
+    }
 
     // Reflexes: common commands are answered instantly, without the AI
-    const hit = words ? reflex(words, installed, mem.routines || []) : null;
+    const hit = words ? reflex(words, installed, mem.routines || [], mem.facts || []) : null;
     if (hit) {
       const full = (hit.use ? `SAY: ${hit.say}\nUSE: ${hit.use}\n` : `SAY: ${hit.say}\nDO: ${JSON.stringify(hit.steps || [])}\n`) + `---\n${hit.say}`;
       save(a.sb, a.uid, words, full).catch(() => {});

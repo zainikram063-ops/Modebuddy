@@ -64,10 +64,11 @@ const google = (q: string) => "https://www.google.com/search?q=" + encodeURIComp
 const youtube = (q: string) => "https://www.youtube.com/results?search_query=" + encodeURIComponent(q);
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 
-export function reflex(words: string, installed: string[], routines: { name: string; triggers?: string[] }[]): Reflex | null {
+export function reflex(words: string, installed: string[], routines: { name: string; triggers?: string[] }[], facts: string[] = []): Reflex | null {
   let t = words.toLowerCase().replace(/’/g, "'").replace(/[^a-z0-9.'\s-]/g, " ").replace(/\s+/g, " ").trim();
   t = t.replace(/^(hey |ok |okay )?(mode ?buddy )?/, "").replace(/^((please|can you|could you|would you|will you|just|go ahead and|i want to|i wanna|let's|lets) )+/, "").replace(/( (please|for me|now|right now|real quick))+$/, "").replace(/\.$/, "").trim();
   if (!t || t.split(" ").length > 12) return null;
+  const mine = aliasesFrom(facts);
 
   // Your routines, said exactly the way you usually ask
   const n = norm(t);
@@ -93,8 +94,31 @@ export function reflex(words: string, installed: string[], routines: { name: str
   // Apps and websites
   m = /^(?:open|launch|start|switch to|go to|bring up|pull up)(?: up)? (.+)$/.exec(t);
   if (m && !FILEY.test(m[1])) {
-    const s = opener(m[1], installed);
+    const s = opener(mine[m[1].replace(/^(the|my) /, "")] || m[1], installed);
     if (s) return { say: "Opening " + (s.do === "open_app" ? String(s.app) : m[1].replace(/^(the|my) /, "")) + ".", steps: [sure(s)] };
   }
   return null;
+}
+
+// Things you taught ModeBuddy, saved as facts like: When I say "browser" I mean "chrome".
+export function aliasesFrom(facts: string[] = []) {
+  const out: Record<string, string> = {};
+  for (const f of facts) {
+    const m = /^When I say "(.+)" I mean "(.+)"\.?$/.exec(String(f));
+    if (m) out[m[1].toLowerCase()] = m[2].toLowerCase();
+  }
+  return out;
+}
+
+// Spots a correction like "no, I meant Chrome" right after "open browser"
+export function correction(words: string, prev: string) {
+  const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9.'\s-]/g, " ").replace(/\s+/g, " ").trim();
+  const w = clean(words);
+  const m = /^(?:no|nope|not that|wrong(?: one| app)?|that's wrong|thats wrong)(?: no)?[ ,]*(?:i (?:meant|said|want|wanted)|open|it's|its)? ?(.+)$/.exec(w) || /^i (?:meant|said) (.+)$/.exec(w);
+  const p = /\b(?:open|launch|start|switch to|go to|bring up|pull up) (?:the |my |up )?(.+)$/.exec(clean(prev));
+  if (!m || !p) return null;
+  const meant = m[1].replace(/^(the|my) /, "").replace(/ (app|instead|please)$/, "").trim();
+  const heard = p[1].replace(/ (please|for me|now)$/, "").replace(/ (app|application|website|site)$/, "").trim();
+  if (!meant || !heard || meant === heard || meant.split(" ").length > 4 || heard.split(" ").length > 4) return null;
+  return { heard, meant, command: "open " + meant };
 }
