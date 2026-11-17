@@ -259,7 +259,7 @@ function startHook() {
       if (isMeta(k) || isAlt(k)) {
         if (!meta && !alt) dirty = false;
         if (isMeta(k)) meta = true; else alt = true;
-        if (meta && alt && !dirty && !holdTimer && !listening) holdTimer = setTimeout(beginListen, 280);
+        if (meta && alt && !dirty && !holdTimer && !listening) holdTimer = setTimeout(beginListen, 160);
         return;
       }
       if (k === K.Escape && panel && !panel.isDestroyed() && panel.isVisible()) hidePanel();
@@ -296,10 +296,11 @@ function stopHook() {
   meta = alt = false;
 }
 
-function beginListen() { mbSpeechSend("start");
+function beginListen() {
   holdTimer = null;
   if (!meta || !alt || dirty || listening || !settings.live) return;
   listening = true;
+  mbSpeechSend("start");
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   stopSpeaking();
   showPanel(display);
@@ -317,6 +318,7 @@ async function endListen() { mbSpeechSend("stop");
   listening = false;
   clearTimeout(watchdog);
   pulse(false);
+  Promise.resolve(mbSh("afplay", ["-v", "0.4", "/System/Library/Sounds/Tink.aiff"])).catch(() => {}); // Phase 4: soft "heard you" tick
   const rect = await pointEnd();
   const image = crop(await shot, rect);
   if (panel && !panel.isDestroyed()) panel.webContents.send("live", { type: "stop", image });
@@ -456,10 +458,19 @@ async function mbWaitFront(name, ms = 7000) {
 }
 const MB_KEYS = { enter: 36, return: 36, tab: 48, space: 49, esc: 53, escape: 53, delete: 51, backspace: 51, up: 126, down: 125, left: 123, right: 124 };
 const MB_MODS = { cmd: "command down", command: "command down", shift: "shift down", alt: "option down", option: "option down", opt: "option down", ctrl: "control down", control: "control down" };
+// Phase 4: key presses happen right inside ModeBuddy (no helper program each time)
 function mbKeys(combo) {
   const parts = String(combo).toLowerCase().split("+").map((s) => s.trim()).filter(Boolean);
   const key = parts.pop() || "";
-  const mods = parts.map((m) => MB_MODS[m]).filter(Boolean);
+  try {
+    const { uIOhook, UiohookKey: K } = require("uiohook-napi");
+    const MODS = { cmd: K.Meta, command: K.Meta, shift: K.Shift, alt: K.Alt, option: K.Alt, opt: K.Alt, ctrl: K.Ctrl, control: K.Ctrl };
+    const NAMED = { enter: K.Enter, return: K.Enter, tab: K.Tab, space: K.Space, esc: K.Escape, escape: K.Escape, delete: K.Backspace, backspace: K.Backspace, up: K.ArrowUp, down: K.ArrowDown, left: K.ArrowLeft, right: K.ArrowRight, "[": K.BracketLeft, "]": K.BracketRight, ",": K.Comma, ".": K.Period, "/": K.Slash, "-": K.Minus, "=": K.Equal, ";": K.Semicolon };
+    const code = key in NAMED ? NAMED[key] : /^[a-z0-9]$/.test(key) ? K[key.toUpperCase()] : undefined;
+    const mods = parts.map((x) => MODS[x]);
+    if (code != null && mods.every((x) => x != null)) { uIOhook.keyTap(code, mods); return Promise.resolve({ out: "" }); }
+  } catch { /* fall back to System Events below */ }
+  const mods = parts.map((x) => MB_MODS[x]).filter(Boolean);
   const act = MB_KEYS[key] != null ? "key code " + MB_KEYS[key] : 'keystroke "' + key.replace(/["\\]/g, "") + '"';
   return mbSh("osascript", ["-e", 'tell application "System Events" to ' + act + (mods.length ? " using {" + mods.join(", ") + "}" : "")]);
 }
@@ -553,10 +564,29 @@ function mbSpeech() {
     mbSpBuf += d.toString();
     const lines = mbSpBuf.split("\n");
     mbSpBuf = lines.pop() || "";
-    for (const l of lines) if (l.trim()) for (const w of BrowserWindow.getAllWindows()) w.webContents.executeJavaScript("window.__mbWords && window.__mbWords(" + JSON.stringify(l) + ")").catch(() => {});
+    for (const l of lines) {
+      if (!l.trim()) continue;
+      mbPrelaunchLine(l);
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.executeJavaScript("window.__mbWords && window.__mbWords(" + JSON.stringify(l) + ")").catch(() => {});
+    }
   });
   Promise.resolve(typeof mbInstalled === "function" ? mbInstalled() : []).then((list) => mbSpeechSend("hints " + JSON.stringify(["ModeBuddy", "Kodra", "Edura", "Claude", ...(Array.isArray(list) ? list : [])].slice(0, 100)))).catch(() => {});
   return mbSp;
 }
-function mbSpeechSend(cmd) { const p = mbSpeech(); if (p && p.stdin.writable) p.stdin.write(cmd + "\n"); }
+function mbSpeechSend(cmd) { if (cmd === "start") mbPre = ""; const p = mbSpeech(); if (p && p.stdin.writable) p.stdin.write(cmd + "\n"); }
 app.whenReady().then(() => mbSpeech());
+
+// Phase 4: apps start opening while you're still talking.
+// When Apple's speech hears "open Spotify", Spotify starts in the background; letting go brings it to the front.
+const MB_ALIAS = { chrome: "Google Chrome", cloud: "Claude", "vs code": "Visual Studio Code", vscode: "Visual Studio Code", word: "Microsoft Word", excel: "Microsoft Excel", powerpoint: "Microsoft PowerPoint", outlook: "Microsoft Outlook", teams: "Microsoft Teams", zoom: "zoom.us", settings: "System Settings" };
+let mbPre = "";
+function mbPrelaunchLine(line) {
+  let text = "";
+  try { text = String(JSON.parse(line).partial || ""); } catch { return; }
+  const m = /^(?:hey |ok |okay )?(?:please |can you |could you )?(?:open|launch|start|switch to|go to) (?:the |my )?(.+?)(?: app)?$/i.exec(text.trim());
+  if (!m || /\b(and|then|folder|file)\b/i.test(m[1])) return;
+  const n = m[1].toLowerCase().replace(/[.!?,]+$/, "").trim();
+  const want = (MB_ALIAS[n] || n).toLowerCase();
+  const a = mbInstalled().find((x) => x.toLowerCase() === want);
+  if (a && a !== mbPre) { mbPre = a; Promise.resolve(mbSh("open", ["-g", "-a", a])).catch(() => {}); }
+}
