@@ -32,7 +32,7 @@ type H = { label: string; state: string; found?: string[] };
 // The newest Gemini Flash first (better at reading the screen), with backups
 async function checkers() {
   const list = await Promise.race([liveModels().catch(() => []), new Promise<[]>((ok) => setTimeout(() => ok([]), 1500))]);
-  return [...new Set([...list.map((m) => m.id).filter((id) => tierOf(id) === 1).slice(0, 1), "gemini-2.5-flash", "gemini-flash-latest"])];
+  return [...new Set([...list.map((m) => m.id).filter((id) => tierOf(id) === 1).slice(0, 1), "gemini-3-flash-preview", "gemini-flash-latest"])];
 }
 
 export async function POST(req: Request) {

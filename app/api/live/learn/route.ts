@@ -67,7 +67,7 @@ export async function POST(req: Request) {
   const text = `Current memory:\n${JSON.stringify(mem).slice(0, 20000)}\n\n` + (note
     ? `The user asked ModeBuddy to remember: ${String(note).slice(0, 1000)}`
     : `Task just finished: ${String(goal || "").slice(0, 1000)}\nSteps that worked: ${JSON.stringify(steps || []).slice(0, 8000)}`);
-  for (const model of ["gemini-2.5-flash", "gemini-flash-latest"]) {
+  for (const model of ["gemini-3-flash-preview", "gemini-flash-latest"]) {
     try {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",

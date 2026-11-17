@@ -23,7 +23,7 @@ async function brains() {
   const ids = (await liveModels().catch(() => [])).map((m) => m.id);
   const flash = ids.filter((id) => tierOf(id) === 1).slice(0, 2);
   const lite = ids.filter((id) => tierOf(id) === 0).slice(0, 1);
-  return [...new Set([process.env.LIVE_MODEL || "", ...flash, "gemini-2.5-flash", "gemini-flash-latest", ...lite, "gemini-2.5-flash-lite"].filter((n) => n && !/gemini-2\.0/.test(n)))];
+  return [...new Set([process.env.LIVE_MODEL || "", ...flash, "gemini-3-flash-preview", "gemini-flash-latest", ...lite, "gemini-flash-lite-latest"].filter((n) => n && !/gemini-[12]\./.test(n)))];
 }
 
 // Think as little as possible so the answer starts right away; tasks get a little more for better plans
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
     const words = String(b.text || "").replace(/\s+/g, " ").trim().slice(0, 2000);
     if (!words && !b.audio) return Response.json({ error: "I did not catch that. Hold ⌘⌥ and try again." }, { status: 400 });
     // Look up the AI models in the background: reflexes don't need them, and a slow answer from Google can't hold anything up
-    const modelsP = Promise.race([brains().catch((): string[] => []), new Promise<string[]>((ok) => setTimeout(() => ok([]), 2500))]).then((m) => (m.length ? m : ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"]));
+    const modelsP = Promise.race([brains().catch((): string[] => []), new Promise<string[]>((ok) => setTimeout(() => ok([]), 2500))]).then((m) => (m.length ? m : ["gemini-3-flash-preview", "gemini-flash-latest", "gemini-flash-lite-latest"]));
     const a = await who();
     const tAuth = Date.now() - t0;
     if (!a) return Response.json({ error: "Please sign in to ModeBuddy first." }, { status: 401 });

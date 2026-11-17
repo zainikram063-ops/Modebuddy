@@ -54,7 +54,7 @@ export async function GET() {
 
 async function analyze(name: string, about: string) {
   const text = `A user made a custom AI mode called "${name}".\n${about}\n\nWhich Mac apps and websites would someone have open when they need this mode? Reply with JSON only: {"apps": ["App Name"], "sites": ["domain.com"], "color": "#hex accent colour that fits the mode"}. Up to 12 apps and 12 sites.`;
-  for (const model of ["gemini-2.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.5-flash"]) {
+  for (const model of ["gemini-flash-lite-latest", "gemini-3-flash-preview"]) {
     try {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",
