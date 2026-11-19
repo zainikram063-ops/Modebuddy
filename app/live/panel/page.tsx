@@ -44,13 +44,8 @@ export default function LivePanel() {
   useEffect(() => { if (view === "listening" || view === "idle") setMini(false); }, [view]);
   const tuck = () => { setMini(true); setTimeout(() => latchApi()?.interactive?.(false), 0); };
   const grab = (e: RPointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0 || (e.target as HTMLElement).closest("button,a,input,textarea")) return;
-    const el = e.currentTarget;
-    el.setPointerCapture(e.pointerId);
-    latchApi()?.drag?.(true);
-    const up = () => { latchApi()?.drag?.(false); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); };
-    el.addEventListener("pointerup", up);
-    el.addEventListener("pointercancel", up);
+    if ((e.target as HTMLElement).closest("button,a,input,textarea")) return;
+    dragOrClick(e);
   };
   const [mode, setMode] = useState<LiveMode>(LIVE_MODES.buddy);
   const [custom, setCustom] = useState<Custom[]>([]);
@@ -403,38 +398,46 @@ const LATCH_CSS = [
   ".gl-up{width:26px;height:26px;display:grid;place-items:center;flex:none;border:0;border-radius:50%;background:transparent;color:inherit;opacity:.65;cursor:pointer;transition:opacity .15s,background .15s}",
   ".gl-up:hover{opacity:1;background:rgba(255,255,255,.1)}",
   ".gl-up svg{width:16px;height:16px}",
-  ".gl-pill{position:absolute;top:6px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;height:38px;padding:0 7px 0 6px;border-radius:999px;background:rgba(20,22,15,.94);border:1px solid rgba(196,255,46,.2);box-shadow:0 8px 24px rgba(0,0,0,.35);color:#fbfeea;font-size:13px;font-weight:500;white-space:nowrap;cursor:grab;user-select:none;-webkit-user-select:none;animation:glPillIn .25s ease}",
+  ".gl-pill{pointer-events:auto;position:absolute;top:6px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;height:38px;padding:0 7px 0 6px;border-radius:999px;background:rgba(20,22,15,.94);border:1px solid rgba(196,255,46,.2);box-shadow:0 8px 24px rgba(0,0,0,.35);color:#fbfeea;font-size:13px;font-weight:500;white-space:nowrap;cursor:grab;user-select:none;-webkit-user-select:none;animation:glPillIn .25s ease}",
   ".gl-pill:active{cursor:grabbing}",
   ".gl-pill-logo{width:26px;height:26px;display:grid;place-items:center}",
   ".gl-pill-logo svg{width:26px;height:26px}",
   ".gl-pill-text{padding-right:2px}",
-  ".gl-pill-open{width:24px;height:24px;display:grid;place-items:center;border-radius:50%;color:#c4ff2e;background:rgba(196,255,46,.14);transition:background .15s}",
+  ".gl-pill-open{border:0;padding:0;cursor:pointer;pointer-events:auto;width:24px;height:24px;display:grid;place-items:center;border-radius:50%;color:#c4ff2e;background:rgba(196,255,46,.14);transition:background .15s}",
   ".gl-pill:hover .gl-pill-open{background:rgba(196,255,46,.26)}",
   ".gl-pill-open svg{width:14px;height:14px}",
   "@keyframes glPillIn{from{opacity:0;transform:translateX(-50%) translateY(-6px) scale(.96)}}",
 ].join("");
 
-function LatchPill({ label, ghost, onOpen }: { label: string; ghost: Parameters<typeof Ghost>[0]["state"]; onOpen: () => void }) {
-  const down = (e: RPointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    const el = e.currentTarget, sx = e.screenX, sy = e.screenY;
-    el.setPointerCapture(e.pointerId);
-    latchApi()?.drag?.(true);
-    const up = (ev: PointerEvent) => {
-      latchApi()?.drag?.(false);
-      el.removeEventListener("pointerup", up);
-      el.removeEventListener("pointercancel", up);
-      if (ev.type === "pointerup" && Math.abs(ev.screenX - sx) < 4 && Math.abs(ev.screenY - sy) < 4) onOpen();
-    };
-    el.addEventListener("pointerup", up);
-    el.addEventListener("pointercancel", up);
+// Press and move a few pixels to drag (the app moves the window). A plain click stays a click.
+function dragOrClick(e: RPointerEvent<HTMLElement>, onClick?: () => void) {
+  if (e.button !== 0) return;
+  const el = e.currentTarget, sx = e.screenX, sy = e.screenY;
+  let dragging = false;
+  el.setPointerCapture(e.pointerId);
+  const move = (ev: PointerEvent) => {
+    if (!dragging && Math.abs(ev.screenX - sx) + Math.abs(ev.screenY - sy) > 4) { dragging = true; latchApi()?.drag?.(true); }
   };
+  const end = (ev: PointerEvent) => {
+    el.removeEventListener("pointermove", move);
+    el.removeEventListener("pointerup", end);
+    el.removeEventListener("pointercancel", end);
+    if (dragging) latchApi()?.drag?.(false);
+    else if (ev.type === "pointerup" && onClick) onClick();
+  };
+  el.addEventListener("pointermove", move);
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+}
+
+function LatchPill({ label, ghost, onOpen }: { label: string; ghost: Parameters<typeof Ghost>[0]["state"]; onOpen: () => void }) {
   return (
-    <div className="gl-pill" role="button" aria-label="Open ModeBuddy" title="Drag to move · click to open" onPointerDown={down}
+    <div className="gl-pill" aria-label="ModeBuddy" title="Drag to move · click to open"
+      onPointerDown={(e) => { if (!(e.target as HTMLElement).closest(".gl-pill-open")) dragOrClick(e, onOpen); }}
       onMouseEnter={() => latchApi()?.interactive?.(true)} onMouseLeave={() => latchApi()?.interactive?.(false)}>
       <span className="gl-pill-logo"><Ghost state={ghost} /></span>
       <span className="gl-pill-text">{label}</span>
-      <span className="gl-pill-open"><Icon name="down" /></span>
+      <button type="button" className="gl-pill-open" onClick={onOpen} aria-label="Latch down" title="Latch down"><Icon name="down" /></button>
     </div>
   );
 }
