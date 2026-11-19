@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld("modebuddy", {
     request: (kind) => call("live:request", String(kind)),
     hide: () => call("live:hide"),
     interactive: (on) => call("live:interactive", !!on),
+    drag: (on) => call("live:drag", !!on),
+    home: () => call("live:home"),
     insert: (text) => call("live:insert", String(text)),
     copy: (text) => call("live:copy", String(text)),
     speak: (text) => call("live:speak", String(text)),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as RPointerEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { desktop, type LiveEvent } from "../../../lib/desktop";
@@ -24,6 +24,8 @@ const ICONS: Record<string, string> = {
   stop: "M8.5 7h7A1.5 1.5 0 0 1 17 8.5v7a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 15.5v-7A1.5 1.5 0 0 1 8.5 7z",
   retry: "M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v3.8h3.8",
   close: "M7 7l10 10M17 7L7 17",
+  up: "M7 14.5l5-5 5 5",
+  down: "M7 9.5l5 5 5-5",
 };
 const Icon = ({ name }: { name: string }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={ICONS[name]} /></svg>
@@ -38,6 +40,18 @@ export default function LivePanel() {
   const [err, setErr] = useState("");
   const [speaking, setSpeaking] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [mini, setMini] = useState(false); // latch tucked into a small pill
+  useEffect(() => { if (view === "listening" || view === "idle") setMini(false); }, [view]);
+  const tuck = () => { setMini(true); setTimeout(() => latchApi()?.interactive?.(false), 0); };
+  const grab = (e: RPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest("button,a,input,textarea")) return;
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    latchApi()?.drag?.(true);
+    const up = () => { latchApi()?.drag?.(false); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); };
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  };
   const [mode, setMode] = useState<LiveMode>(LIVE_MODES.buddy);
   const [custom, setCustom] = useState<Custom[]>([]);
   const [heard, setHeard] = useState("");
@@ -314,13 +328,15 @@ export default function LivePanel() {
   const words = view === "listening" ? "" : heard || p.heard;
 
   return (
-    <div className="gl-stage">
+    <div className={"gl-stage" + (mini ? " gl-mini-on" : "")}>
+      <style>{LATCH_CSS}</style>
+      {mini && <LatchPill label={view === "error" ? "Something went wrong" : view === "thinking" || steps.some((s) => s.state === "doing") ? "Working…" : speaking ? "Talking…" : view === "answer" ? "Answer ready" : "ModeBuddy"} ghost={steps.some((s) => s.state === "doing") ? "thinking" : view} onOpen={() => setMini(false)} />}
       <div ref={latchRef} className={`gl-latch ${leaving ? "out" : ""}`} data-view={view} data-mode={mode.id} style={style}
         onMouseMove={(e) => { const el = e.currentTarget, r = el.getBoundingClientRect(); el.style.setProperty("--mx", `${Math.round(((e.clientX - r.left) / r.width) * 100)}%`); }}
         onMouseEnter={() => api()?.interactive(true)} onMouseLeave={() => api()?.interactive(false)}>
         <i className="gl-glint" key={isCard ? "a" : "b"} />
         <div ref={innerRef} className="gl-inner">
-          <div className="gl-row">
+          <div className="gl-row" onPointerDown={grab} onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest("button")) latchApi()?.home?.(); }}>
             <div className="gl-logo"><Ghost state={steps.some((s) => s.state === "doing") ? "thinking" : view} /></div>
             <div className="gl-field">
               {words
@@ -330,6 +346,7 @@ export default function LivePanel() {
             </div>
             <div className="gl-side">
               <span className="gl-mode"><i />{view === "error" ? "Error" : mode.name}</span>
+              {view !== "listening" && latchApi()?.drag && <button className="gl-up" onClick={tuck} aria-label="Latch up" title="Latch up"><Icon name="up" /></button>}
               {isCard && <button className="gl-x" onClick={() => leave(() => api()?.hide())} aria-label="Close"><Icon name="close" /></button>}
             </div>
           </div>
@@ -368,5 +385,56 @@ function Ghost({ state }: { state: View }) {
         </g>
       </g>
     </svg>
+  );
+}
+
+
+/* ---------- Latch: tuck it into a small pill, drag it anywhere ---------- */
+type LatchApi = { interactive?: (on: boolean) => unknown; drag?: (on: boolean) => unknown; home?: () => unknown };
+function latchApi(): LatchApi | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (window as unknown as { modebuddy?: { live?: LatchApi } }).modebuddy?.live;
+}
+
+const LATCH_CSS = [
+  ".gl-mini-on .gl-latch{visibility:hidden!important;pointer-events:none!important}",
+  ".gl-row{cursor:grab}",
+  ".gl-row button{cursor:pointer}",
+  ".gl-up{width:26px;height:26px;display:grid;place-items:center;flex:none;border:0;border-radius:50%;background:transparent;color:inherit;opacity:.65;cursor:pointer;transition:opacity .15s,background .15s}",
+  ".gl-up:hover{opacity:1;background:rgba(255,255,255,.1)}",
+  ".gl-up svg{width:16px;height:16px}",
+  ".gl-pill{position:absolute;top:6px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;height:38px;padding:0 7px 0 6px;border-radius:999px;background:rgba(20,22,15,.94);border:1px solid rgba(196,255,46,.2);box-shadow:0 8px 24px rgba(0,0,0,.35);color:#fbfeea;font-size:13px;font-weight:500;white-space:nowrap;cursor:grab;user-select:none;-webkit-user-select:none;animation:glPillIn .25s ease}",
+  ".gl-pill:active{cursor:grabbing}",
+  ".gl-pill-logo{width:26px;height:26px;display:grid;place-items:center}",
+  ".gl-pill-logo svg{width:26px;height:26px}",
+  ".gl-pill-text{padding-right:2px}",
+  ".gl-pill-open{width:24px;height:24px;display:grid;place-items:center;border-radius:50%;color:#c4ff2e;background:rgba(196,255,46,.14);transition:background .15s}",
+  ".gl-pill:hover .gl-pill-open{background:rgba(196,255,46,.26)}",
+  ".gl-pill-open svg{width:14px;height:14px}",
+  "@keyframes glPillIn{from{opacity:0;transform:translateX(-50%) translateY(-6px) scale(.96)}}",
+].join("");
+
+function LatchPill({ label, ghost, onOpen }: { label: string; ghost: Parameters<typeof Ghost>[0]["state"]; onOpen: () => void }) {
+  const down = (e: RPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const el = e.currentTarget, sx = e.screenX, sy = e.screenY;
+    el.setPointerCapture(e.pointerId);
+    latchApi()?.drag?.(true);
+    const up = (ev: PointerEvent) => {
+      latchApi()?.drag?.(false);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      if (ev.type === "pointerup" && Math.abs(ev.screenX - sx) < 4 && Math.abs(ev.screenY - sy) < 4) onOpen();
+    };
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  };
+  return (
+    <div className="gl-pill" role="button" aria-label="Open ModeBuddy" title="Drag to move · click to open" onPointerDown={down}
+      onMouseEnter={() => latchApi()?.interactive?.(true)} onMouseLeave={() => latchApi()?.interactive?.(false)}>
+      <span className="gl-pill-logo"><Ghost state={ghost} /></span>
+      <span className="gl-pill-text">{label}</span>
+      <span className="gl-pill-open"><Icon name="down" /></span>
+    </div>
   );
 }

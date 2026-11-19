@@ -228,7 +228,7 @@ function ensurePanel() {
 function showPanel(display) {
   const p = ensurePanel();
   const wa = display.workArea;
-  p.setBounds({ x: Math.round(wa.x + (wa.width - PW) / 2), y: wa.y + 4, width: PW, height: PH });
+  const s = mbLatchSpot(display); p.setBounds({ x: s.x, y: s.y, width: PW, height: PH });
   p.setIgnoreMouseEvents(true, { forward: true });
   p.showInactive();
 }
@@ -590,3 +590,49 @@ function mbPrelaunchLine(line) {
   const a = mbInstalled().find((x) => x.toLowerCase() === want);
   if (a && a !== mbPre) { mbPre = a; Promise.resolve(mbSh("open", ["-g", "-a", a])).catch(() => {}); }
 }
+
+
+// ---------- Latch: drag it anywhere, it remembers where you left it ----------
+const MB_LATCH_FILE = path.join(app.getPath("userData"), "latch.json");
+let mbLatch = {};
+try { mbLatch = JSON.parse(require("fs").readFileSync(MB_LATCH_FILE, "utf8")) || {}; } catch { mbLatch = {}; }
+function mbLatchSave() { try { require("fs").writeFileSync(MB_LATCH_FILE, JSON.stringify(mbLatch)); } catch { /* fine */ } }
+function mbLatchSpot(display) {
+  const wa = display.workArea, s = mbLatch[display.id];
+  if (!s) return { x: Math.round(wa.x + (wa.width - PW) / 2), y: wa.y + 4 };
+  const cx = Math.min(Math.max(wa.x + s.dx + PW / 2, wa.x + 60), wa.x + wa.width - 60);
+  const y = Math.min(Math.max(wa.y + s.dy, wa.y), wa.y + wa.height - 80);
+  return { x: Math.round(cx - PW / 2), y: Math.round(y) };
+}
+let mbDrag = null;
+function mbDragStop() {
+  if (!mbDrag) return;
+  clearInterval(mbDrag.t);
+  mbDrag = null;
+  if (!panel || panel.isDestroyed()) return;
+  const [x, y] = panel.getPosition();
+  const d = screen.getDisplayNearestPoint({ x: x + PW / 2, y: y + 20 });
+  mbLatch[d.id] = { dx: x - d.workArea.x, dy: y - d.workArea.y };
+  mbLatchSave();
+}
+ipcMain.handle("live:drag", (e, on) => {
+  if (!fromUs(e) || !panel || panel.isDestroyed()) return;
+  if (!on) return mbDragStop();
+  mbDragStop();
+  const c0 = screen.getCursorScreenPoint(), [x0, y0] = panel.getPosition(), t0 = Date.now();
+  mbDrag = { t: setInterval(() => {
+    if (!panel || panel.isDestroyed() || Date.now() - t0 > 30000) return mbDragStop();
+    const c = screen.getCursorScreenPoint();
+    panel.setPosition(Math.round(x0 + c.x - c0.x), Math.round(y0 + c.y - c0.y));
+  }, 12) };
+  try { require("uiohook-napi").uIOhook.once("mouseup", mbDragStop); } catch { /* the panel's own mouse-up covers it */ }
+});
+ipcMain.handle("live:home", (e) => {
+  if (!fromUs(e) || !panel || panel.isDestroyed()) return;
+  const [x, y] = panel.getPosition();
+  const d = screen.getDisplayNearestPoint({ x: x + PW / 2, y: y + 20 });
+  delete mbLatch[d.id];
+  mbLatchSave();
+  const s = mbLatchSpot(d);
+  panel.setPosition(s.x, s.y);
+});
