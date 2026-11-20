@@ -1,13 +1,38 @@
 "use client";
-import { useState } from "react";
+import { useDeferredValue, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 export type KFile = { path: string; lang: string; code: string };
 type QData = { intro?: string; questions: { q: string; options?: string[]; multi?: boolean }[] };
-type Seg = { type: "md"; text: string } | { type: "questions"; data: QData } | { type: "actions"; data: string[] } | { type: "wait"; text: string };
+type Seg =
+  | { type: "md"; text: string }
+  | { type: "file"; file: KFile; writing: boolean }
+  | { type: "questions"; data: QData }
+  | { type: "actions"; data: string[] }
+  | { type: "wait"; text: string };
+type Render = (text: string, key?: number) => ReactNode;
 
 const SKIP = "You decide";
 
-/* Splits a Kodra reply into normal text, question cards and quick replies, and collects the project's files */
+/* Draws a Kodra reply. While it's writing it skips redraws when the Mac is busy, and files stay folded so big builds stay light. */
+export function KodraMarkdown({ md, render }: { md: string; render: Render }) {
+  const calm = useDeferredValue(md);
+  const { segs, files, closed } = useMemo(() => splitKodra(calm), [calm]);
+  return (
+    <>
+      <style>{KD_CSS}</style>
+      {segs.map((sg, i) =>
+        sg.type === "md" ? render(sg.text, i)
+        : sg.type === "file" ? <KodraFile key={i} file={sg.file} writing={sg.writing} render={render} />
+        : sg.type === "questions" ? <KodraQuestions key={i} data={sg.data} />
+        : sg.type === "actions" ? <KodraActions key={i} data={sg.data} />
+        : <div key={i} className="kd-wait">{sg.text}</div>
+      )}
+      {files.length > 0 && <KodraProject files={files} done={closed} />}
+    </>
+  );
+}
+
+/* Splits a Kodra reply into normal text, files, question cards and quick replies */
 export function splitKodra(md: string) {
   const lines = md.split("\n");
   const segs: Seg[] = [];
@@ -18,7 +43,7 @@ export function splitKodra(md: string) {
   for (let i = 0; i < lines.length; i++) {
     const open = /^(\s*)(`{3,}|~{3,})\s*([^\s`]*)\s*(.*)$/.exec(lines[i]);
     if (!open) { buf.push(lines[i]); continue; }
-    const [, indent, fence, rawLang, meta] = open;
+    const [, , fence, rawLang, meta] = open;
     const lang = rawLang.toLowerCase();
     const shut = new RegExp("^\\s*" + (fence[0] === "`" ? "`" : "~") + "{" + fence.length + ",}\\s*$");
     let j = i + 1;
@@ -40,11 +65,16 @@ export function splitKodra(md: string) {
     }
     const fm = /(?:^|\s)(?:file|filename|path|title)=["']?([^"'\s]+)/.exec(meta);
     if (fm) {
+      flush();
       const path = fm[1].replace(/^\.?\//, "");
-      files.set(path, { path, lang, code: body });
-      buf.push("**`" + path + "`**", indent + fence + rawLang);
-    } else buf.push(lines[i]);
-    buf.push(...lines.slice(i + 1, j));
+      const file = { path, lang, code: body };
+      files.set(path, file);
+      segs.push({ type: "file", file, writing: !ended });
+      if (!ended) closed = false;
+      i = j;
+      continue;
+    }
+    buf.push(...lines.slice(i, j));
     if (ended) buf.push(lines[j]);
     else closed = false;
     i = j;
@@ -64,7 +94,7 @@ function sendToChat(text: string) {
   return true;
 }
 
-export function KodraQuestions({ data }: { data: QData }) {
+function KodraQuestions({ data }: { data: QData }) {
   const qs = data.questions.filter((q) => q && typeof q.q === "string").slice(0, 12);
   const [picked, setPicked] = useState<string[][]>(() => qs.map(() => []));
   const [typed, setTyped] = useState<string[]>(() => qs.map(() => ""));
@@ -84,7 +114,6 @@ export function KodraQuestions({ data }: { data: QData }) {
   };
   return (
     <div className="kd-q">
-      <style>{KD_CSS}</style>
       {data.intro && <p className="kd-q-intro">{data.intro}</p>}
       {qs.map((q, i) => (
         <div key={i} className="kd-q-item">
@@ -106,30 +135,75 @@ export function KodraQuestions({ data }: { data: QData }) {
   );
 }
 
-export function KodraActions({ data }: { data: string[] }) {
+function KodraActions({ data }: { data: string[] }) {
   const [sent, setSent] = useState("");
   return (
     <div className="kd-act">
-      <style>{KD_CSS}</style>
       {data.map((a) => <button key={a} type="button" className={sent === a ? "on" : ""} disabled={!!sent} onClick={() => { if (sendToChat(a)) setSent(a); }}>{a}</button>)}
     </div>
   );
 }
 
-export function KodraProject({ files, done }: { files: KFile[]; done: boolean }) {
+/* One file of a build, folded into a single row. The code is only drawn when you open it. */
+function KodraFile({ file, writing, render }: { file: KFile; writing: boolean; render: Render }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const lines = file.code ? file.code.split("\n").length : 0;
+  useEffect(() => { if (!writing && lines <= 40) setOpen(true); }, [writing, lines]);
+  const fence = file.code.includes("```") ? "~~~~" : "```";
+  const copy = () => { navigator.clipboard?.writeText(file.code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }).catch(() => {}); };
+  return (
+    <div className="kd-file">
+      <div className="kd-file-head">
+        <code>{file.path}</code>
+        <span>{lines} line{lines === 1 ? "" : "s"}{writing ? " · writing…" : ""}</span>
+        {!writing && <button type="button" onClick={copy}>{copied ? "Copied" : "Copy"}</button>}
+        {!writing && <button type="button" onClick={() => setOpen((v) => !v)}>{open ? "Hide code" : "Show code"}</button>}
+      </div>
+      {writing && <pre className="kd-file-tail">{file.code.split("\n").slice(-8).join("\n")}</pre>}
+      {open && !writing && <div className="kd-file-code">{render(fence + file.lang + "\n" + file.code + "\n" + fence)}</div>}
+    </div>
+  );
+}
+
+function KodraProject({ files, done }: { files: KFile[]; done: boolean }) {
   const [show, setShow] = useState(false);
+  const id = useId();
+  const box = useRef<HTMLDivElement>(null);
   const web = files.some((f) => /(^|\/)index\.html?$/i.test(f.path));
   const name = projectName(files);
+  const html = useMemo(() => (show ? previewHtml(files) : ""), [show, files]);
+  // Only one preview runs at a time
+  useEffect(() => {
+    const other = (e: Event) => { if ((e as CustomEvent<string>).detail !== id) setShow(false); };
+    window.addEventListener("kodra-preview", other);
+    return () => window.removeEventListener("kodra-preview", other);
+  }, [id]);
+  // A preview you scroll away from stops running
+  useEffect(() => {
+    const el = box.current;
+    if (!show || !el || typeof IntersectionObserver === "undefined") return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const io = new IntersectionObserver((entries) => {
+      const e = entries[entries.length - 1];
+      clearTimeout(t);
+      if (e && !e.isIntersecting) t = setTimeout(() => setShow(false), 1500);
+    });
+    io.observe(el);
+    return () => { io.disconnect(); clearTimeout(t); };
+  }, [show]);
+  const toggle = () => {
+    if (!show) window.dispatchEvent(new CustomEvent("kodra-preview", { detail: id }));
+    setShow(!show);
+  };
   return (
-    <div className="kd-proj">
-      <style>{KD_CSS}</style>
+    <div className="kd-proj" ref={box}>
       <div className="kd-proj-head"><b>{name}</b><span>{files.length} file{files.length === 1 ? "" : "s"}{done ? "" : " · still writing…"}</span></div>
-      <div className="kd-proj-files">{files.map((f) => <code key={f.path}>{f.path}</code>)}</div>
       <div className="kd-proj-btns">
         <button type="button" disabled={!done} onClick={() => download(name + ".zip", zip(files))}>Download .zip</button>
-        {web && <button type="button" disabled={!done} onClick={() => setShow((v) => !v)}>{show ? "Hide preview" : "Preview"}</button>}
+        {web && <button type="button" disabled={!done} onClick={toggle}>{show ? "Stop preview" : "Preview"}</button>}
       </div>
-      {show && web && <iframe className="kd-proj-view" title="Preview" sandbox="allow-scripts allow-forms allow-modals allow-popups" srcDoc={previewHtml(files)} />}
+      {show && web && <iframe className="kd-proj-view" title="Preview" sandbox="allow-scripts allow-forms allow-modals allow-popups" srcDoc={html} />}
     </div>
   );
 }
@@ -207,13 +281,13 @@ const KD_CSS = [
   ".kd-q,.kd-proj{margin:12px 0;padding:14px 16px;border:1px solid rgba(127,127,127,.25);border-radius:14px;background:rgba(127,127,127,.06)}",
   ".kd-q-intro{margin:0 0 6px;font-weight:500}",
   ".kd-q-item{padding:12px 0;border-top:1px solid rgba(127,127,127,.15)}",
-  ".kd-q-intro+.kd-q-item,.kd-q>style+.kd-q-item{border-top:0}",
+  ".kd-q-intro+.kd-q-item,.kd-q>.kd-q-item:first-child{border-top:0}",
   ".kd-q-title{display:flex;gap:10px;align-items:flex-start;font-weight:600;margin-bottom:9px}",
   ".kd-q-title span{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11.5px;background:rgba(196,255,46,.2)}",
   ".kd-q-title em{font-style:normal;font-weight:400;font-size:12.5px;opacity:.6}",
   ".kd-q-opts{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px 32px}",
-  ".kd-q-opts button,.kd-act button,.kd-proj-btns button{padding:6px 13px;border-radius:999px;border:1px solid rgba(127,127,127,.35);background:transparent;color:inherit;font:inherit;font-size:13px;cursor:pointer;transition:background .15s,border-color .15s}",
-  ".kd-q-opts button:hover:not(:disabled),.kd-act button:hover:not(:disabled),.kd-proj-btns button:hover:not(:disabled){border-color:#c4ff2e}",
+  ".kd-q-opts button,.kd-act button,.kd-proj-btns button,.kd-file-head button{padding:6px 13px;border-radius:999px;border:1px solid rgba(127,127,127,.35);background:transparent;color:inherit;font:inherit;font-size:13px;cursor:pointer;transition:background .15s,border-color .15s}",
+  ".kd-q-opts button:hover:not(:disabled),.kd-act button:hover:not(:disabled),.kd-proj-btns button:hover:not(:disabled),.kd-file-head button:hover{border-color:#c4ff2e}",
   ".kd-q-opts button.on,.kd-act button.on{background:#c4ff2e;border-color:#c4ff2e;color:#11130a}",
   ".kd-q-other{display:block;width:calc(100% - 32px);margin-left:32px;box-sizing:border-box;padding:7px 11px;border-radius:9px;border:1px solid rgba(127,127,127,.3);background:transparent;color:inherit;font:inherit;font-size:13px}",
   ".kd-q-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:12px;font-size:12.5px}",
@@ -221,10 +295,15 @@ const KD_CSS = [
   ".kd-q-send{flex:none;padding:8px 18px;border-radius:999px;border:0;background:#c4ff2e;color:#11130a;font:inherit;font-weight:600;cursor:pointer}",
   ".kd-q-send:disabled,.kd-proj-btns button:disabled,.kd-act button:disabled:not(.on){opacity:.45;cursor:default}",
   ".kd-act{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}",
-  ".kd-proj-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}",
+  ".kd-file{margin:8px 0;border:1px solid rgba(127,127,127,.22);border-radius:10px;overflow:hidden}",
+  ".kd-file-head{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;background:rgba(127,127,127,.07)}",
+  ".kd-file-head code{font-size:12.5px;font-weight:600;background:none;padding:0}",
+  ".kd-file-head span{flex:1;font-size:12px;opacity:.6}",
+  ".kd-file-head button{padding:3px 10px;font-size:12px}",
+  ".kd-file-tail{margin:0;padding:8px 12px;max-height:150px;overflow:hidden;font-size:12px;line-height:1.5;opacity:.7;white-space:pre-wrap;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}",
+  ".kd-file-code{padding:0 8px 4px}",
+  ".kd-proj-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:12px}",
   ".kd-proj-head span{font-size:12.5px;opacity:.65}",
-  ".kd-proj-files{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 12px}",
-  ".kd-proj-files code{font-size:12px;padding:2px 8px;border-radius:6px;background:rgba(127,127,127,.14)}",
   ".kd-proj-btns{display:flex;gap:8px}",
   ".kd-proj-view{display:block;width:100%;height:520px;margin-top:12px;border:1px solid rgba(127,127,127,.25);border-radius:10px;background:#fff}",
   ".kd-wait{opacity:.6;font-size:13px;margin:8px 0}",
