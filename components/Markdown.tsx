@@ -1,4 +1,5 @@
 "use client";
+import { splitKodra, KodraQuestions, KodraActions, KodraProject } from "./KodraBlocks";
 
 import { Children, isValidElement, memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components, type Options } from "react-markdown";
@@ -390,7 +391,7 @@ function Markdown({ text }: { text: string }) {
   );
 }
 
-export default memo(Markdown);
+const MarkdownInner = memo(Markdown);
 
 /* ---------- inline version for quiz options, flashcards, exam questions ---------- */
 const inlineComponents: Components = {
@@ -407,3 +408,23 @@ export const InlineMd = memo(function InlineMd({ text }: { text: string }) {
     </span>
   );
 });
+
+// Kodra: question cards, quick replies and a project card (download and preview) inside replies
+export default function MarkdownWithKodra(props: Parameters<typeof MarkdownInner>[0]) {
+  const bag = props as unknown as Record<string, unknown>;
+  const key = ["children", "text", "content", "md", "markdown", "source", "value", "body", "message", "src"].find((k) => typeof bag[k] === "string");
+  const md = key ? (bag[key] as string) : "";
+  if (!key || !/(?:```|~~~)(?:questions|actions)|(?:```|~~~)[^\n]*\b(?:file|filename|path|title)=/.test(md)) return <MarkdownInner {...props} />;
+  const { segs, files, closed } = splitKodra(md);
+  return (
+    <>
+      {segs.map((sg, i) =>
+        sg.type === "md" ? <MarkdownInner key={i} {...({ ...bag, [key]: sg.text } as unknown as Parameters<typeof MarkdownInner>[0])} />
+        : sg.type === "questions" ? <KodraQuestions key={i} data={sg.data} />
+        : sg.type === "actions" ? <KodraActions key={i} data={sg.data} />
+        : <div key={i} className="kd-wait">{sg.text}</div>
+      )}
+      {files.length > 0 && <KodraProject files={files} done={closed} />}
+    </>
+  );
+}
