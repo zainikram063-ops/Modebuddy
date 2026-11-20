@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { KeyRound, Sparkles } from "lucide-react";
 import { Icon } from "./Icons";
 import { DEFAULT_MODEL, GEMINI_MODELS, isChatModel, pickDefault, type PlatformModel } from "@/lib/models";
+import { KeyAndLimits } from "./KeyBridge";
 import { PROVIDERS, modelLabel, type ModelConfig } from "@/lib/providers-meta";
 import Floating from "./Floating";
 
@@ -75,6 +76,7 @@ export default function ModelPicker({ value, onChange, byok }: { value: string; 
               <span><b>{m.label}</b><small>{m.note}</small></span>
             </button>
           ))}
+          <KeyAndLimits />
           {byok && own.length > 0 && <div className="mp-group">Your API key</div>}
           {byok && own.map((id) => (
             <button key={id} type="button" role="menuitem" className={OWN + id === value ? "on" : ""} onClick={() => { onChange(OWN + id); setOpen(false); }}>

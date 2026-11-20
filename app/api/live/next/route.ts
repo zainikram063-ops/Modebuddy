@@ -1,3 +1,4 @@
+import { requestKey } from "@/lib/userKey";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { liveModels } from "../../../../lib/platform";
@@ -7,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
 
-const KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
+
 const RULES = `You are ModeBuddy, using the user's Mac to finish their task. You can see the screen right now.
 Reply with JSON only: either {"done": true} or {"done": false, "steps": [the next 1 to 3 steps]}.
 Steps: {"do":"open_app","app":"exact installed app name"}, {"do":"open_url","url":"https://..."}, {"do":"find","name":"file or folder name","kind":"folder or file"}, {"do":"open_path","path":"~/exact/path/from/find"}, {"do":"type","text":"..."}, {"do":"key","keys":"enter"}, {"do":"click","x":500,"y":500,"target":"what you are clicking"}, {"do":"wait","ms":1500}.
@@ -67,7 +68,7 @@ Installed apps: ${(installed || []).slice(0, 250).join(", ")}`;
       try {
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-goog-api-key": KEY },
+          headers: { "Content-Type": "application/json", "x-goog-api-key": (await requestKey()) },
           body: JSON.stringify({ systemInstruction: { parts: [{ text: RULES }] }, contents: [{ role: "user", parts }], generationConfig: { temperature: 0.1, responseMimeType: "application/json", thinkingConfig: /gemini-2\.5/.test(model) ? { thinkingBudget: 256 } : { thinkingLevel: "low" } } }),
           signal: AbortSignal.timeout(12000),
         });

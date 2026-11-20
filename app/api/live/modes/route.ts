@@ -1,3 +1,4 @@
+import { requestKey } from "@/lib/userKey";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
@@ -6,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const TABLE = "modes";
-const KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
+
 type Out = { id: string; name: string; color: string; apps: string[]; sites: string[] };
 
 const pick = (m: Record<string, unknown>, keys: string[]) => {
@@ -58,7 +59,7 @@ async function analyze(name: string, about: string) {
     try {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": KEY },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": (await requestKey()) },
         body: JSON.stringify({ contents: [{ role: "user", parts: [{ text }] }], generationConfig: { temperature: 0.2, responseMimeType: "application/json" } }),
         signal: AbortSignal.timeout(12000),
       });

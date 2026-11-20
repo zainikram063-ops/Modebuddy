@@ -1,3 +1,4 @@
+import { requestKey } from "@/lib/userKey";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
@@ -5,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
 
-const KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
+
 type Routine = { name: string; triggers?: string[]; steps?: unknown[]; uses?: number; last?: string };
 type Mem = { routines: Routine[]; facts: string[] };
 type SB = ReturnType<typeof createServerClient>;
@@ -71,7 +72,7 @@ export async function POST(req: Request) {
     try {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": KEY },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": (await requestKey()) },
         body: JSON.stringify({ systemInstruction: { parts: [{ text: RULES }] }, contents: [{ role: "user", parts: [{ text }] }], generationConfig: { temperature: 0.1, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 512 } } }),
         signal: AbortSignal.timeout(30000),
       });

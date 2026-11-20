@@ -1,3 +1,4 @@
+import { bucketFor, freeModelFor, limitMessage, spendLimit } from "@/lib/limits";
 import { streamText, appendResponseMessages, createIdGenerator, tool, type Message } from "ai";
 import { z } from "zod";
 import { createClient as createSupabase } from "@supabase/supabase-js";
@@ -54,7 +55,7 @@ function friendlyError(e: unknown, provider: string) {
   const code = err?.statusCode;
   const msg = err?.message ?? String(e);
   if (code === 401 || code === 403 || /api key|unauthori[sz]ed|permission|invalid.*key/i.test(msg))
-    return `${provider} rejected your API key. Check Settings → Models.`;
+    return provider === "google" ? "Google didn't accept your Gemini key. Open the model menu and tap “Gemini key” to fix it." : `${provider} rejected your API key. Check Settings → Models.`;
   if (code === 429 || /quota|rate limit|resource.?exhausted/i.test(msg))
     return `${provider} rate limit hit. Wait a moment${provider === "google" ? " (Gemini's free tier resets every minute)" : ""} and retry.`;
   if (code === 404 || /model.*not found|does not exist/i.test(msg))
@@ -85,7 +86,13 @@ async function handlePOST(req: Request) {
   const messages = (body.messages ?? []).slice(-60);
   if (!conversationId || !messages.length) return fail(400, "Nothing to send.");
   if (!cfg?.provider) return fail(400, "Pick a model in Settings → Models.");
-  if (!cfg.apiKey?.trim() && !process.env.GEMINI_API_KEY && cfg.provider !== "custom")
+  // Everyone uses their own free Gemini key, and the mode picks the model: Kodra gets the best free one, Buddy and Edura use Flash Lite
+  if (cfg.provider === "google" && !cfg.apiKey?.trim()) {
+    cfg.apiKey = (req.headers.get("x-gemini-key") || "").trim();
+    cfg.model = freeModelFor(String(modeId));
+    if (!cfg.apiKey) return fail(400, "Add your free Gemini key to start chatting. Open the model menu and tap “Add your free Gemini key”. It takes about a minute.");
+  }
+  if (!cfg.apiKey?.trim() && cfg.provider !== "custom")
     return fail(400, `Add your ${cfg.provider} API key in Settings → Models.`);
 
   let model;
@@ -103,6 +110,12 @@ async function handlePOST(req: Request) {
   }
   mode ??= BUILTIN_MODES[0];
   const currentModeId = mode.id;
+  // ---- free plan limits: Buddy and Kodra, counted per account over the last 5 hours (Edura has none) ----
+  const limitBucket = bucketFor(mode.id);
+  if (limitBucket) {
+    const lim = await spendLimit(db, user.id, limitBucket);
+    if (!lim.ok) return fail(429, limitMessage(limitBucket, lim.resetAt));
+  }
 
   // ---- persist conversation + latest user message (skipped for compare) ----
   if (!ephemeral) {

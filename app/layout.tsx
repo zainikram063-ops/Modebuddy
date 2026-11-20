@@ -1,3 +1,4 @@
+import KeyBridge from "@/components/KeyBridge";
 import Warmup from "@/components/Warmup";
 import SideFlip from "../components/SideFlip";
 import { Analytics } from "@vercel/analytics/react";
@@ -19,7 +20,7 @@ export const viewport: Viewport = { themeColor: "#0a0a0a" };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${display.variable} ${mono.variable} ${serif.variable}`} suppressHydrationWarning>
-      <body><Warmup />{children}
+      <body><KeyBridge /><Warmup />{children}
         <SideFlip />
         <Analytics />
       </body>

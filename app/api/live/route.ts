@@ -1,3 +1,5 @@
+import { requestKey } from "@/lib/userKey";
+import { liveLimit, limitMessage } from "@/lib/limits";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { SYSTEM, liveContext, type CustomMode, type LiveMem } from "../../../lib/liveSystem";
@@ -9,7 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
+
 const LIMIT = Number(process.env.LIVE_DAILY_LIMIT || 100);
 // Requests that sound like "do something on my Mac" get a little thinking time
 const TASKY = /\b(open|launch|start|go to|search|google|look up|find|type|write|click|press|play|close|switch|send|show me|take me)\b/i;
@@ -39,7 +41,7 @@ async function gemini(model: string, body: unknown) {
   try {
     return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": KEY },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": (await requestKey()) },
       body: JSON.stringify(body),
       signal: ac.signal,
     });
@@ -82,7 +84,9 @@ export async function GET() {
 export async function POST(req: Request) {
   const t0 = Date.now();
   try {
-    if (!KEY) return Response.json({ error: "Live is missing the Gemini key on the server." }, { status: 500 });
+    if (!(await requestKey())) return Response.json({ error: "Add your free Gemini key in ModeBuddy first: open the model menu and tap “Add your free Gemini key”." }, { status: 400 });
+    const mbLimit = await liveLimit();
+    if (!mbLimit.ok) return Response.json({ error: limitMessage("buddy", mbLimit.resetAt) }, { status: 429 });
     const b = (await req.json().catch(() => ({}))) as Body;
     const words = String(b.text || "").replace(/\s+/g, " ").trim().slice(0, 2000);
     if (!words && !b.audio) return Response.json({ error: "I did not catch that. Hold ⌘⌥ and try again." }, { status: 400 });
