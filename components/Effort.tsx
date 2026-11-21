@@ -43,7 +43,7 @@ if (typeof window !== "undefined") installEffortFetch();
 function EffortArt({ level, size = 64, mini = false }: { level: number; size?: number; mini?: boolean }) {
   const id = LEVELS[level].id;
   return (
-    <svg className={"ea ea-" + id + (mini ? " ea-mini" : "")} width={size} height={size} viewBox={mini ? "-8 -8 80 80" : "-4 -4 72 72"} aria-hidden="true">
+    <svg className={"ea ea-" + id + (mini ? " ea-mini" : "")} width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
       {id === "low" && (<><circle className="ea-halo" cx="32" cy="34" r="17" /><circle className="ea-core" cx="32" cy="34" r="7" /></>)}
       {id === "medium" && (<><path className="ea-flame" d="M32 8c7 10 14 17 14 28a14 14 0 0 1-28 0c0-7 4-12 8-16 1 5 3 7 5 8-1-8 0-14 1-20z" /><path className="ea-inner" d="M32 30c4 5 7 8 7 13a7 7 0 0 1-14 0c0-4 3-8 7-13z" /></>)}
       {id === "high" && (<><circle className="ea-ring" cx="32" cy="32" r="20" /><g className="ea-orbit"><circle cx="32" cy="12" r="3" /><circle cx="32" cy="52" r="2.2" /></g><circle className="ea-core" cx="32" cy="32" r="7" /></>)}
@@ -189,7 +189,7 @@ export default function EffortControl({ modeId }: { modeId: string }) {
       {open && createPortal(
         <div ref={pop} className={"mbe-pop" + (ultraOn ? " mbe-ultra" : "")} style={pos} role="dialog" aria-label="Effort">
           <div className="mbe-hero">
-            <div key={shown} className="mbe-art"><EffortArt level={shown} size={60} /></div>
+            <div key={shown} className="mbe-art"><EffortArt level={shown} size={40} /></div>
             <div>
               <b>{LEVELS[shown].name}{shown === 1 && <em>Recommended</em>}</b>
               <p>{ultraOn ? "Ultra code always runs at Ultra effort." : LEVELS[shown].desc}</p>
@@ -276,8 +276,8 @@ const EFFORT_CSS = [
   ".mbe-pill.mbe-ultra{background:linear-gradient(135deg,#a855f7,#6d28d9) !important;color:#fff !important;border-color:transparent !important;box-shadow:0 0 16px rgba(168,85,247,.45)}",
   /* the panel */
   ".mbe-pop{position:fixed;z-index:9990;padding:16px;border-radius:18px;background:var(--side);color:var(--side-ink);box-shadow:0 24px 60px -12px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.08);font-size:13px;animation:mbeIn .16s ease-out}",
-  ".mbe-hero{display:flex;gap:12px;align-items:center;margin-bottom:10px;min-height:60px}",
-  ".mbe-art{flex:none;animation:mbeArt .3s ease-out}",
+  ".mbe-hero{display:flex;gap:12px;align-items:center;margin-bottom:10px;min-height:52px}",
+  ".mbe-art{flex:none;display:grid;place-items:center;width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.05);overflow:hidden;animation:mbeArt .3s ease-out}",
   ".mbe-hero b{display:flex;align-items:center;gap:8px;font-size:15px;font-family:var(--display)}",
   ".mbe-hero em{font-style:normal;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:999px;background:rgba(196,255,46,.18);color:#c4ff2e;font-family:var(--mono)}",
   ".mbe-hero p{margin:3px 0 0;color:var(--side-ink-2);line-height:1.4}",
@@ -339,7 +339,7 @@ const EFFORT_CSS = [
   "@keyframes symReach2{0%,100%{transform:translate(0,0)}50%{transform:translate(-11px,7px)}}",
   "@keyframes symBlink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}",
   /* level animations */
-  ".ea{display:block;overflow:visible}",
+  ".ea{display:block;overflow:hidden}",
   ".ea-mini{overflow:hidden}",
   ".ea-mini *{filter:none !important}",
   ".ea *{transform-box:fill-box;transform-origin:center}",
