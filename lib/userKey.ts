@@ -8,3 +8,12 @@ export async function requestKey(): Promise<string> {
     return "";
   }
 }
+
+/* Any header the browser sent with this request (empty if none) */
+export async function requestHeader(name: string): Promise<string> {
+  try {
+    return ((await headers()).get(name) || "").trim();
+  } catch {
+    return "";
+  }
+}

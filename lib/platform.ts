@@ -1,7 +1,7 @@
 /* Server only: ModeBuddy's own Gemini key, the live model list, and automatic fallback */
 import { DEFAULT_MODEL, GEMINI_MODELS, isChatModel, noteOf, sortModels, tierOf, type PlatformModel } from "./models";
 import type { ModelConfig } from "./providers-meta";
-import { requestKey } from "./userKey";
+import { requestHeader, requestKey } from "./userKey";
 
 const API = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -43,6 +43,7 @@ export const withFallback = (base: Fetch): Fetch => async (input, init) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   const m = /\/models\/([^:/?]+):/.exec(url);
   init = withThinking(url, init);
+  init = await withEffort(url, init);
   // Everyone uses their own Gemini key: fill it in from the request when the model was made without one
   const h = new Headers(init?.headers);
   if (!h.get("x-goog-api-key")) {
@@ -66,6 +67,46 @@ export const withFallback = (base: Fetch): Fetch => async (input, init) => {
   }
   return base(input, init);
 };
+
+/* Effort slider (Low to Ultra) and Ultra code, sent by the chat. Only the main streamed answer is changed. */
+const EFFORTS = ["low", "medium", "high", "max", "ultra"];
+const EFFORT_NOTES: Record<string, string> = {
+  high: "\n\n[Effort: High] Take your time. Think the problem through step by step, consider edge cases, and check your answer before you reply.",
+  max: "\n\n[Effort: Max] Be thorough. Weigh a few approaches and pick the best, verify facts, numbers and code carefully, and give a complete answer. Don't cut corners or shorten things to save space.",
+  ultra: "\n\n[Effort: Ultra] Work at your absolute best. Plan your approach, solve it fully, then review your answer like a strict expert, find any mistakes or gaps, and fix them before you reply. Only send the final, polished answer.",
+};
+const ULTRA_CODE = "\n\n[Ultra code] Build like a senior engineer shipping to production. Plan the architecture and file structure first. Write every file completely with clean, consistent, well-named code. Handle errors, loading and empty states, and edge cases. Make the UI polished, accessible (labels, contrast, keyboard use) and responsive. Avoid deprecated APIs and never leave placeholders or TODOs. Before replying, review every file for bugs, broken imports, typos and missing pieces, and fix them. Kodra's usual steps still apply: questions first for new builds, then a plan, then the build.";
+
+async function withEffort(url: string, init?: RequestInit): Promise<RequestInit | undefined> {
+  if (typeof init?.body !== "string" || !/streamGenerateContent/i.test(url)) return init;
+  const ultraCode = (await requestHeader("x-mb-ultra-code")) === "1";
+  const asked = (await requestHeader("x-mb-effort")).toLowerCase();
+  const level = ultraCode ? "ultra" : EFFORTS.includes(asked) ? asked : "medium";
+  if (level === "medium") return init;
+  try {
+    const b = JSON.parse(init.body);
+    const model = (/\/models\/([^:/?]+):/.exec(url) || [])[1] || "";
+    const v25 = /gemini-2\.5/.test(model), pro = /pro/.test(model);
+    const g = { ...(b.generationConfig || {}) };
+    const tc = { ...(g.thinkingConfig || {}) };
+    delete tc.thinkingBudget;
+    delete tc.thinkingLevel;
+    if (level === "low") {
+      g.thinkingConfig = { ...tc, ...(v25 ? { thinkingBudget: pro ? 128 : 0 } : { thinkingLevel: "low" }) };
+    } else {
+      g.thinkingConfig = { ...tc, ...(v25 ? { thinkingBudget: level === "high" ? 8192 : pro ? 32768 : 24576 } : { thinkingLevel: "high" }) };
+      g.maxOutputTokens = Math.max(Number(g.maxOutputTokens) || 0, level === "high" ? 16384 : 65536);
+      const note = { text: EFFORT_NOTES[level] + (ultraCode ? ULTRA_CODE : "") };
+      const si = b.systemInstruction;
+      if (si && Array.isArray(si.parts)) si.parts.push(note);
+      else b.systemInstruction = { parts: [note] };
+    }
+    b.generationConfig = g;
+    return { ...init, body: JSON.stringify(b) };
+  } catch {
+    return init;
+  }
+}
 
 /* Quick answers: when the chat asks for it, tell Gemini to think less so it starts answering sooner */
 function withThinking(url: string, init?: RequestInit): RequestInit | undefined {

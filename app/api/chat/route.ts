@@ -98,7 +98,9 @@ async function handlePOST(req: Request) {
   let model;
   try { model = createModel(cfg); } catch (e) { return fail(400, (e as Error).message); }
   // Fast lane: simple questions on a Pro model are answered by its Flash version (much quicker, same quality for easy stuff)
-  if (cfg.provider === "google" && /pro/i.test(String(cfg.model || "")) && quickThinking(body)) {
+  const mbEffort = req.headers.get("x-mb-effort") || "medium";
+  const mbDeep = /^(high|max|ultra)$/.test(mbEffort) || req.headers.get("x-mb-ultra-code") === "1";
+  if (cfg.provider === "google" && /pro/i.test(String(cfg.model || "")) && !mbDeep && (mbEffort === "low" || quickThinking(body))) {
     try { model = createModel({ ...cfg, model: String(cfg.model).replace(/pro/i, "flash") }); } catch { /* keep the chosen model */ }
   }
 

@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { modeCopy, onAccent, type Mode } from "@/lib/modes";
 import type { ModelConfig } from "@/lib/providers-meta";
 import ModelPicker, { useModelChoice } from "./ModelPicker";
+import EffortControl from "./Effort";
 import { ArtifactPanel } from "./Artifacts";
 import Reminders from "./Reminders";
 import BuddyHome from "./BuddyHome";
@@ -789,6 +790,7 @@ export default function ChatView(p: Props) {
 
             <ArtifactPanel />
             <ModelPicker value={modelId} onChange={setModelId} byok={ownKey} />
+            <EffortControl modeId={p.mode.id} />
             <Reminders buddy={p.mode.id === "default"} />
             {connectors.length > 0 && (
               <button type="button" className="pill ghost-pill" onClick={() => p.openSettings("connectors")} title="Connectors">
