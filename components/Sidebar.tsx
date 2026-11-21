@@ -3,6 +3,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { Icon } from "./Icons";
+import SkillsMenu from "./Skills";
 import { VERSION } from "@/lib/version";
 import type { Mode } from "@/lib/modes";
 import type { AppUser } from "./Workspace";
@@ -63,6 +64,7 @@ export default function Sidebar(p: Props) {
       </div>
 
       <button className="new-chat" onClick={p.onNew}><Icon name="plus" /> New chat <kbd>⌘K</kbd></button>
+      <SkillsMenu onNew={p.onNew} />
       <label className="search"><Icon name="search" size={14} /><input placeholder="Search chats" value={q} onChange={(e) => setQ(e.target.value)} /></label>
 
       <nav className="convos" aria-label="Chat history">

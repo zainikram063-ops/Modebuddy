@@ -1,3 +1,4 @@
+import { buildSkillTools } from "@/lib/skillTools";
 import { bucketFor, freeModelFor, limitMessage, spendLimit } from "@/lib/limits";
 import { streamText, appendResponseMessages, createIdGenerator, tool, type Message } from "ai";
 import { z } from "zod";
@@ -262,12 +263,14 @@ if (/code/i.test(`${mode.id} ${mode.name}`)) system += `\n\n${CODE_NOTE}`;
 if (mode.id === "default") system += `\n\n${buddyNote()}`;
 system += `\n\n${ARTIFACT_NOTE}`;
 
+  // ---- skills: expert instructions ModeBuddy loads when a task fits, or when the message starts with /skill-id ----
+  const skillTools = await buildSkillTools(db, user.id, mode.id, req.headers.get("x-mb-skills-off") || "", String([...messages].reverse().find((m) => m.role === "user")?.content ?? ""));
   const result = streamText({
     model,
     headers: quickThinking(body) ? { "x-mb-think": "low" } : undefined,
     system,
     messages,
-    tools: { ...memoryTools, ...webTools, ...modeTools, ...studyTools, ...mcp.tools } as Parameters<typeof streamText>[0]["tools"], // ← NEW (...studyTools)
+    tools: { ...memoryTools, ...webTools, ...modeTools, ...studyTools, ...skillTools, ...mcp.tools } as Parameters<typeof streamText>[0]["tools"], // ← NEW (...studyTools)
     maxSteps: 8,
     toolCallStreaming: true,
     abortSignal: req.signal,
