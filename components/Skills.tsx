@@ -152,14 +152,27 @@ export default function SkillsMenu({ onNew }: { onNew: () => void }) {
   );
 }
 
-const TABS: { id: "all" | SkillMode | "mine"; label: string }[] = [
-  { id: "all", label: "All" }, { id: "buddy", label: "Buddy" }, { id: "kodra", label: "Kodra" }, { id: "edura", label: "Edura" }, { id: "mine", label: "Mine" },
+const NAV: { id: "all" | SkillMode | "mine"; label: string }[] = [
+  { id: "all", label: "All skills" },
+  { id: "buddy", label: "Buddy" },
+  { id: "kodra", label: "Kodra" },
+  { id: "edura", label: "Edura" },
+  { id: "mine", label: "My skills" },
 ];
+const GROUPS: { id: SkillMode | "mine"; label: string }[] = [
+  { id: "mine", label: "My skills" },
+  { id: "buddy", label: "Buddy" },
+  { id: "kodra", label: "Kodra" },
+  { id: "edura", label: "Edura" },
+  { id: "any", label: "Every mode" },
+];
+type Tab = (typeof NAV)[number]["id"];
+const inTab = (s: Skill, t: Tab) => t === "all" || (t === "mine" ? !!s.mine : s.mode === t || s.mode === "any");
 
 function SkillsPage({ onClose, onTry }: { onClose: () => void; onTry: (s: Skill) => void }) {
   const { mine, needsSetup } = useMine();
   const [q, setQ] = useState("");
-  const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("all");
+  const [tab, setTab] = useState<Tab>("all");
   const [off, setOff] = useState<string[]>(() => readOff());
   const [open, setOpen] = useState<string | null>(null);
   const [form, setForm] = useState<Row | "new" | null>(null);
@@ -169,11 +182,10 @@ function SkillsPage({ onClose, onTry }: { onClose: () => void; onTry: (s: Skill)
     return () => document.removeEventListener("keydown", esc);
   }, [form, onClose]);
   const rows = new Map(mine.map((r) => [mySkillId(r), r] as [string, Row]));
-  const all = [...BUILTIN_SKILLS, ...mine.map(toSkill)];
+  const all = [...mine.map(toSkill), ...BUILTIN_SKILLS];
   const ql = q.trim().toLowerCase();
-  const shown = all.filter((s) =>
-    (tab === "all" || (tab === "mine" ? !!s.mine : s.mode === tab || s.mode === "any")) &&
-    (!ql || (s.name + " " + s.when + " " + s.id).toLowerCase().includes(ql)));
+  const shown = all.filter((s) => inTab(s, tab) && (!ql || (s.name + " " + s.when + " " + s.id).toLowerCase().includes(ql)));
+  const groups = GROUPS.map((g) => ({ ...g, items: shown.filter((s) => (s.mine ? "mine" : s.mode) === g.id) })).filter((g) => g.items.length);
   const isOn = (s: Skill) => (s.mine ? rows.get(s.id)?.enabled !== false : !off.includes(s.id));
   const toggle = async (s: Skill) => {
     if (!s.mine) {
@@ -191,54 +203,82 @@ function SkillsPage({ onClose, onTry }: { onClose: () => void; onTry: (s: Skill)
     const r = rows.get(s.id);
     if (!r || !window.confirm("Delete the skill \"" + r.name + "\"?")) return;
     await fetch("/api/skills?id=" + encodeURIComponent(r.id), { method: "DELETE" }).catch(() => null);
+    setOpen(null);
     void loadMine();
+  };
+  const item = (s: Skill) => {
+    const on = isOn(s);
+    const expanded = open === s.id;
+    return (
+      <div key={s.id} className={"sk-item" + (on ? "" : " off") + (expanded ? " open" : "")} data-mode={s.mode}>
+        <button type="button" className="sk-item-main" onClick={() => setOpen(expanded ? null : s.id)} aria-expanded={expanded}>
+          <span className="sk-ic"><SkillIcon name={s.icon} size={16} /></span>
+          <span className="sk-item-txt"><b>{s.name}</b><small>{s.when}</small></span>
+          <code className="sk-item-id">/{s.id}</code>
+          <svg className="sk-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+        </button>
+        <button type="button" className="sk-item-try" onClick={() => onTry(s)}>Try</button>
+        <button type="button" role="switch" aria-checked={on} aria-label={(on ? "Turn off " : "Turn on ") + s.name} className={"sk-sw" + (on ? " on" : "")} onClick={() => void toggle(s)}><span /></button>
+        {expanded && (
+          <div className="sk-detail">
+            <p className="sk-detail-label">How ModeBuddy does it</p>
+            <p className="sk-detail-text">{s.instructions}</p>
+            <div className="sk-detail-btns">
+              <button type="button" className="sk-try" onClick={() => onTry(s)}>Try it in a new chat</button>
+              {s.mine && <button type="button" onClick={() => { const r = rows.get(s.id); if (r) setForm(r); }}>Edit</button>}
+              {s.mine && <button type="button" className="danger" onClick={() => void remove(s)}>Delete</button>}
+              <span className="sk-detail-mode">{MODE_LABEL[s.mode]}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
   return (
     <div className="sk-back" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="sk-page" role="dialog" aria-label="Skills">
         <header className="sk-head">
-          <div>
-            <h2>Skills</h2>
-            <p>ModeBuddy uses these on its own when they fit. Type <code>/</code> in the chat box to pick one yourself.</p>
-          </div>
-          <button type="button" className="sk-new" onClick={() => setForm("new")}>Create a skill</button>
-          <button type="button" className="sk-x" onClick={onClose} aria-label="Close">×</button>
-        </header>
-        <div className="sk-bar">
-          <input className="sk-search" placeholder="Search skills" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
-          <div className="sk-tabs">
-            {TABS.map((t) => <button key={t.id} type="button" className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>{t.label}{t.id === "mine" && mine.length ? " " + mine.length : ""}</button>)}
-          </div>
-        </div>
-        <div className="sk-grid">
-          {shown.map((s) => {
-            const on = isOn(s);
-            return (
-              <div key={s.id} className={"sk-card" + (on ? "" : " off")} data-mode={s.mode}>
-                <div className="sk-card-top">
-                  <span className="sk-ic"><SkillIcon name={s.icon} /></span>
-                  <span className="sk-tag">{MODE_LABEL[s.mode]}</span>
-                  <button type="button" role="switch" aria-checked={on} aria-label={(on ? "Turn off " : "Turn on ") + s.name} className={"sk-sw" + (on ? " on" : "")} onClick={() => void toggle(s)}><span /></button>
-                </div>
-                <button type="button" className="sk-name" onClick={() => setOpen(open === s.id ? null : s.id)}>{s.name}</button>
-                <p className="sk-when">{s.when}</p>
-                {open === s.id && <pre className="sk-instr">{s.instructions}</pre>}
-                <div className="sk-foot">
-                  <code>/{s.id}</code>
-                  <span className="sk-gap" />
-                  {s.mine && <button type="button" onClick={() => { const r = rows.get(s.id); if (r) setForm(r); }}>Edit</button>}
-                  {s.mine && <button type="button" onClick={() => void remove(s)}>Delete</button>}
-                  <button type="button" className="sk-try" onClick={() => onTry(s)}>Try it</button>
-                </div>
-              </div>
-            );
-          })}
-          {!shown.length && (
-            <div className="sk-empty">
-              {tab === "mine" ? (needsSetup ? "Your own skills need a one-time setup on the server first." : "You haven't made a skill yet. Teach ModeBuddy something you do often.") : "No skills match that."}
-              {tab === "mine" && !needsSetup && <button type="button" onClick={() => setForm("new")}>Create a skill</button>}
+          <div className="sk-title">
+            <span className="sk-title-ic"><SkillIcon name="spark" size={17} /></span>
+            <div>
+              <h2>Skills</h2>
+              <p>ModeBuddy uses these on its own when they fit. Type <kbd>/</kbd> in any chat to pick one.</p>
             </div>
-          )}
+          </div>
+          <label className="sk-search">
+            <SkillIcon name="search" size={15} />
+            <input placeholder="Search skills" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+          </label>
+          <button type="button" className="sk-new" onClick={() => setForm("new")}>New skill</button>
+          <button type="button" className="sk-x" onClick={onClose} aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </header>
+        <div className="sk-body">
+          <nav className="sk-nav" aria-label="Skill groups">
+            {NAV.map((t) => (
+              <button key={t.id} type="button" className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>
+                <span>{t.label}</span><em>{all.filter((s) => inTab(s, t.id)).length}</em>
+              </button>
+            ))}
+            <p className="sk-nav-note">Turn a skill off and ModeBuddy stops using it. Your own skills work in the modes you pick for them.</p>
+          </nav>
+          <div className="sk-list">
+            {groups.map((g) => (
+              <section key={g.id} className="sk-group">
+                <h3>{g.label}<span>{g.items.length}</span></h3>
+                <div className="sk-rows">{g.items.map(item)}</div>
+              </section>
+            ))}
+            {!groups.length && (
+              <div className="sk-empty">
+                <span className="sk-empty-ic"><SkillIcon name={tab === "mine" && !ql ? "spark" : "search"} size={20} /></span>
+                <b>{tab === "mine" && !ql ? (needsSetup ? "One-time setup needed" : "No skills of your own yet") : "No skills match that"}</b>
+                <p>{tab === "mine" && !ql ? (needsSetup ? "Your own skills need the database setup first (supabase/skills.sql)." : "Teach ModeBuddy something you do often, and it'll do it your way every time.") : "Try a different word."}</p>
+                {tab === "mine" && !ql && !needsSetup && <button type="button" className="sk-new" onClick={() => setForm("new")}>New skill</button>}
+              </div>
+            )}
+          </div>
         </div>
         {form && <SkillForm initial={form === "new" ? null : form} onClose={() => setForm(null)} />}
       </div>
@@ -387,47 +427,68 @@ const SK_CSS = [
   ".sk-count{margin-left:auto;font-size:11px;font-weight:500;color:var(--side-ink-2);font-family:var(--mono)}",
   /* page */
   ".sk-back{position:fixed;inset:0;z-index:9980;display:grid;place-items:center;padding:24px;background:rgba(6,6,5,.55);backdrop-filter:blur(8px)}",
-  ".sk-page{position:relative;display:flex;flex-direction:column;width:min(1040px,100%);height:min(86vh,860px);border-radius:22px;background:var(--side);color:var(--side-ink);border:1px solid rgba(255,255,255,.08);box-shadow:0 30px 80px -20px rgba(0,0,0,.6);overflow:hidden;animation:skIn .2s ease-out}",
-  ".sk-head{display:flex;align-items:flex-start;gap:12px;padding:22px 24px 14px}",
-  ".sk-head>div{flex:1}",
-  ".sk-head h2{margin:0;font-family:var(--display);font-size:24px;letter-spacing:-.02em}",
-  ".sk-head p{margin:4px 0 0;color:var(--side-ink-2);font-size:13px}",
-  ".sk-head code{padding:1px 6px;border-radius:5px;background:var(--side-2);font-family:var(--mono)}",
-  ".sk-new{padding:9px 16px;border-radius:999px;border:0;background:var(--accent);color:var(--on-accent);font:inherit;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap}",
-  ".sk-x{width:34px;height:34px;flex:none;border-radius:50%;border:0;background:var(--side-2);color:var(--side-ink);font-size:20px;line-height:1;cursor:pointer}",
-  ".sk-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:0 24px 14px;border-bottom:1px solid rgba(255,255,255,.06)}",
-  ".sk-search{flex:1;min-width:200px;padding:9px 12px;border-radius:10px;border:1px solid var(--side-3);background:var(--side-2);color:var(--side-ink);font:inherit;font-size:13px;outline:none}",
-  ".sk-search:focus{border-color:color-mix(in srgb,var(--accent) 50%,transparent)}",
-  ".sk-tabs{display:flex;gap:4px;padding:3px;border-radius:999px;background:var(--side-2)}",
-  ".sk-tabs button{padding:6px 12px;border-radius:999px;border:0;background:transparent;color:var(--side-ink-2);font:inherit;font-size:12.5px;cursor:pointer}",
-  ".sk-tabs button.on{background:var(--side-3);color:var(--side-ink);font-weight:600}",
-  ".sk-grid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;padding:16px 24px 24px;align-content:start}",
-  ".sk-card{display:flex;flex-direction:column;gap:6px;padding:14px;border-radius:14px;background:var(--side-2);border:1px solid rgba(255,255,255,.05);transition:border-color .2s,transform .2s,opacity .2s}",
-  ".sk-card:hover{border-color:rgba(255,255,255,.14);transform:translateY(-1px)}",
-  ".sk-card.off{opacity:.5}",
-  ".sk-card-top{display:flex;align-items:center;gap:8px}",
+  ".sk-page{position:relative;display:flex;flex-direction:column;width:min(980px,100%);height:min(84vh,820px);border-radius:20px;background:var(--side);color:var(--side-ink);border:1px solid rgba(255,255,255,.08);box-shadow:0 30px 80px -20px rgba(0,0,0,.6);overflow:hidden;animation:skIn .2s ease-out}",
+  ".sk-page kbd{padding:1px 6px;border-radius:5px;border:1px solid var(--side-3);background:var(--side-2);font-family:var(--mono);font-size:11px}",
+  ".sk-head{display:flex;align-items:center;gap:10px;padding:16px 16px 16px 20px;border-bottom:1px solid rgba(255,255,255,.06)}",
+  ".sk-title{flex:1;display:flex;align-items:center;gap:12px;min-width:0}",
+  ".sk-title-ic{display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:11px;background:var(--accent);color:var(--on-accent)}",
+  ".sk-title h2{margin:0;font-family:var(--display);font-size:19px;letter-spacing:-.02em}",
+  ".sk-title p{margin:2px 0 0;font-size:12.5px;color:var(--side-ink-2)}",
+  ".sk-search{display:flex;align-items:center;gap:8px;width:230px;height:36px;padding:0 12px;box-sizing:border-box;border-radius:10px;border:1px solid var(--side-3);background:var(--side-2);color:var(--side-ink-2);transition:border-color .2s}",
+  ".sk-search:focus-within{border-color:color-mix(in srgb,var(--accent) 50%,transparent)}",
+  ".sk-search input{flex:1;min-width:0;border:0;outline:none;background:transparent;color:var(--side-ink);font:inherit;font-size:13px}",
+  ".sk-new{height:36px;padding:0 16px;border-radius:10px;border:0;background:var(--accent);color:var(--on-accent);font:inherit;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap}",
+  ".sk-x{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:10px;border:0;background:transparent;color:var(--side-ink-2);cursor:pointer}",
+  ".sk-x:hover{background:var(--side-2);color:var(--side-ink)}",
+  ".sk-body{flex:1;display:flex;min-height:0}",
+  ".sk-nav{flex:none;width:200px;display:flex;flex-direction:column;gap:2px;padding:14px 10px;box-sizing:border-box;border-right:1px solid rgba(255,255,255,.06)}",
+  ".sk-nav button{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:9px;border:0;background:transparent;color:var(--side-ink-2);font:inherit;font-size:13px;text-align:left;cursor:pointer;transition:background .15s,color .15s}",
+  ".sk-nav button:hover{background:var(--side-2);color:var(--side-ink)}",
+  ".sk-nav button.on{background:var(--side-2);color:var(--side-ink);font-weight:600}",
+  ".sk-nav em{font-style:normal;font-family:var(--mono);font-size:11px;opacity:.7}",
+  ".sk-nav-note{margin:auto 0 0;padding:12px 10px 4px;font-size:11.5px;line-height:1.5;color:var(--side-ink-2)}",
+  ".sk-list{flex:1;overflow:auto;padding:0 22px 24px}",
+  ".sk-group h3{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;margin:0;padding:18px 2px 8px;background:var(--side);font-size:10.5px;font-weight:600;font-family:var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--side-ink-2)}",
+  ".sk-group h3 span{padding:1px 6px;border-radius:5px;background:var(--side-2);font-size:10px}",
+  ".sk-rows{border:1px solid rgba(255,255,255,.06);border-radius:14px;overflow:hidden;background:rgba(255,255,255,.015)}",
+  /* rows */
+  ".sk-item{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;column-gap:10px;padding-right:14px;border-top:1px solid rgba(255,255,255,.05);transition:background .15s}",
+  ".sk-item:first-child{border-top:0}",
+  ".sk-item:hover,.sk-item.open{background:rgba(255,255,255,.03)}",
+  ".sk-item.off .sk-item-main{opacity:.45}",
+  ".sk-item-main{display:flex;align-items:center;gap:12px;min-width:0;padding:11px 0 11px 14px;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}",
   ".sk-ic{display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:10px;background:var(--side-3);color:var(--side-ink)}",
   ".sk-ic.sm{width:28px;height:28px;border-radius:8px}",
-  "[data-mode=buddy] .sk-ic{color:#c4ff2e}",
-  "[data-mode=kodra] .sk-ic{color:#7dd3fc}",
-  "[data-mode=edura] .sk-ic{color:#fdba74}",
-  "[data-mode=any] .sk-ic{color:#e4e4e7}",
-  ".sk-tag{font-size:10px;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:var(--side-3);color:var(--side-ink-2);white-space:nowrap}",
-  ".sk-sw{margin-left:auto;position:relative;flex:none;width:30px;height:18px;border-radius:999px;border:0;background:var(--side-3);cursor:pointer;transition:background .2s}",
+  "[data-mode=buddy] .sk-ic{color:#c4ff2e;background:rgba(196,255,46,.1)}",
+  "[data-mode=kodra] .sk-ic{color:#7dd3fc;background:rgba(125,211,252,.1)}",
+  "[data-mode=edura] .sk-ic{color:#fdba74;background:rgba(253,186,116,.1)}",
+  "[data-mode=any] .sk-ic{color:#e4e4e7;background:rgba(228,228,231,.08)}",
+  ".sk-item-txt{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}",
+  ".sk-item-txt b{font-size:13.5px;font-weight:600;letter-spacing:-.005em}",
+  ".sk-item-txt small{font-size:12px;color:var(--side-ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+  ".sk-item-id{flex:none;font-family:var(--mono);font-size:11px;color:var(--side-ink-2);opacity:.65}",
+  ".sk-chev{flex:none;color:var(--side-ink-2);transition:transform .2s}",
+  ".sk-item.open .sk-chev{transform:rotate(90deg)}",
+  ".sk-item-try{height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--side-3);background:transparent;color:var(--side-ink);font:inherit;font-size:12px;font-weight:600;cursor:pointer;opacity:0;transition:opacity .15s,background .15s,color .15s}",
+  ".sk-item:hover .sk-item-try,.sk-item.open .sk-item-try,.sk-item-try:focus-visible{opacity:1}",
+  ".sk-item-try:hover{background:var(--accent);border-color:transparent;color:var(--on-accent)}",
+  ".sk-sw{position:relative;flex:none;width:30px;height:18px;border-radius:999px;border:0;background:var(--side-3);cursor:pointer;transition:background .2s}",
   ".sk-sw span{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .2s}",
   ".sk-sw.on{background:var(--accent)}",
   ".sk-sw.on span{transform:translateX(12px);background:var(--on-accent)}",
-  ".sk-name{all:unset;cursor:pointer;font-weight:600;font-size:14.5px;margin-top:4px}",
-  ".sk-name:hover{text-decoration:underline}",
-  ".sk-when{margin:0;font-size:12.5px;line-height:1.45;color:var(--side-ink-2);flex:1}",
-  ".sk-instr{margin:4px 0 0;padding:10px;border-radius:10px;background:rgba(0,0,0,.25);font-family:var(--mono);font-size:11.5px;line-height:1.5;white-space:pre-wrap;color:var(--side-ink);max-height:220px;overflow:auto}",
-  ".sk-foot{display:flex;align-items:center;gap:6px;margin-top:6px}",
-  ".sk-foot code{font-family:var(--mono);font-size:11px;color:var(--side-ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
-  ".sk-gap{flex:1}",
-  ".sk-foot button{padding:5px 10px;border-radius:999px;border:1px solid var(--side-3);background:transparent;color:var(--side-ink);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}",
-  ".sk-foot .sk-try{border-color:transparent;background:var(--accent);color:var(--on-accent);font-weight:600}",
-  ".sk-empty{grid-column:1/-1;display:grid;justify-items:center;gap:12px;padding:48px 12px;color:var(--side-ink-2);text-align:center}",
-  ".sk-empty button{padding:8px 16px;border-radius:999px;border:0;background:var(--accent);color:var(--on-accent);font:inherit;font-weight:600;cursor:pointer}",
+  ".sk-detail{grid-column:1/-1;padding:2px 16px 16px 60px;animation:skFade .15s ease-out}",
+  ".sk-detail-label{margin:0 0 6px;font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--side-ink-2)}",
+  ".sk-detail-text{margin:0 0 14px;max-width:640px;font-size:12.5px;line-height:1.65;color:var(--side-ink);opacity:.88;white-space:pre-wrap}",
+  ".sk-detail-btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px}",
+  ".sk-detail-btns button{height:30px;padding:0 13px;border-radius:8px;border:1px solid var(--side-3);background:transparent;color:var(--side-ink);font:inherit;font-size:12px;cursor:pointer}",
+  ".sk-detail-btns .sk-try{border-color:transparent;background:var(--accent);color:var(--on-accent);font-weight:600}",
+  ".sk-detail-btns .danger:hover{border-color:#f87171;color:#fca5a5}",
+  ".sk-detail-mode{margin-left:auto;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--side-ink-2)}",
+  ".sk-empty{display:grid;justify-items:center;gap:8px;padding:72px 16px;text-align:center;color:var(--side-ink-2)}",
+  ".sk-empty-ic{display:grid;place-items:center;width:44px;height:44px;margin-bottom:4px;border-radius:14px;background:var(--side-2);color:var(--side-ink)}",
+  ".sk-empty b{color:var(--side-ink);font-size:14px}",
+  ".sk-empty p{margin:0 0 6px;max-width:340px;font-size:12.5px;line-height:1.5}",
+  ".sk-tag{font-size:10px;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:var(--side-3);color:var(--side-ink-2);white-space:nowrap}",
   /* create / edit */
   ".sk-form-back{position:absolute;inset:0;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.45);animation:skFade .15s ease-out}",
   ".sk-form{width:min(580px,100%);max-height:100%;overflow:auto;box-sizing:border-box;padding:22px;border-radius:18px;background:var(--side-2);border:1px solid rgba(255,255,255,.08);box-shadow:0 20px 60px rgba(0,0,0,.5)}",
@@ -458,5 +519,5 @@ const SK_CSS = [
   ".sk-slash-txt small{font-family:var(--mono);font-size:11px;color:var(--side-ink-2)}",
   "@keyframes skIn{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}",
   "@keyframes skFade{from{opacity:0}to{opacity:1}}",
-  "@media (max-width:640px){.sk-back{padding:0}.sk-page{height:100vh;border-radius:0}.sk-row{flex-wrap:wrap}}",
+  "@media (max-width:720px){.sk-back{padding:0}.sk-page{height:100vh;border-radius:0}.sk-head{flex-wrap:wrap}.sk-search{order:3;width:100%}.sk-body{flex-direction:column}.sk-nav{width:auto;flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid rgba(255,255,255,.06);padding:8px 10px}.sk-nav button{flex:none}.sk-nav-note,.sk-item-id{display:none}.sk-list{padding:0 12px 20px}.sk-detail{padding-left:16px}.sk-row{flex-wrap:wrap}}",
 ].join("");
