@@ -380,6 +380,7 @@ export function SlashSkills({ modeId }: { modeId: string }) {
     const sync = () => {
       const m = /^\/([\w-]*)$/.exec(ta.value);
       setQ(m ? m[1] : null);
+      if (!m) return;
       setSel(0);
       const r = ta.getBoundingClientRect();
       setRect({ left: r.left, top: r.top, width: r.width });

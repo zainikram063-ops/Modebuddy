@@ -31,6 +31,31 @@ function install() {
 }
 if (typeof window !== "undefined") install();
 
+/* Saves CPU: pauses animations while ModeBuddy isn't in front, and the little effort animation after 30s without input.
+   Not in the Live panel, which is never "in front" but still needs its animations. */
+function installCalm() {
+  if (location.pathname.startsWith("/live/panel")) return;
+  const root = document.documentElement;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let last = 0;
+  const away = () => { root.classList.toggle("mb-away", document.hidden || !document.hasFocus()); };
+  const wake = () => {
+    const now = Date.now();
+    if (now - last < 1000 && !root.classList.contains("mb-idle")) return;
+    last = now;
+    root.classList.remove("mb-idle");
+    clearTimeout(timer);
+    timer = setTimeout(() => root.classList.add("mb-idle"), 30_000);
+  };
+  window.addEventListener("focus", away);
+  window.addEventListener("blur", () => { setTimeout(away, 0); });
+  document.addEventListener("visibilitychange", away);
+  for (const ev of ["pointermove", "pointerdown", "keydown", "wheel"]) window.addEventListener(ev, wake, { passive: true });
+  away();
+  wake();
+}
+if (typeof window !== "undefined") installCalm();
+
 export default function KeyBridge() {
   const [open, setOpen] = useState(false);
   const [key, setKey] = useState("");
@@ -125,4 +150,6 @@ const MBK_CSS = [
   ".mbk-pick{padding:8px 10px;border-top:1px solid rgba(127,127,127,.18);display:grid;gap:4px}",
   ".mbk-pick button{border:0;background:transparent;color:inherit;font:inherit;font-size:13px;font-weight:600;text-align:left;cursor:pointer;padding:4px 2px}",
   ".mbk-pick small{white-space:pre-line;font-size:11.5px;opacity:.65;padding:0 2px}",
+  "html.mb-away *,html.mb-away *::before,html.mb-away *::after{animation-play-state:paused !important}",
+  "html.mb-idle .mbe-pill .ea *{animation-play-state:paused !important}",
 ].join("");
