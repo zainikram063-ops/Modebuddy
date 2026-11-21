@@ -29,7 +29,10 @@ export async function buildSkillTools(db: SupabaseClient, userId: string, modeId
         to: z.number().optional().describe("End minute, only if they want part of the video"),
         focus: z.string().optional().describe("What to focus on, if the user said"),
       }),
-      execute: async ({ url, from, to, focus }) => watchYouTube(url, from, to, focus),
+      execute: async ({ url, from, to, focus }) => {
+        try { await db.from("usage_events").insert({ user_id: userId, bucket: "skill:youtube-video" }); } catch { /* stats only */ }
+        return watchYouTube(url, from, to, focus);
+      },
     }),
   };
   if (!list.length) return watch;
@@ -41,6 +44,7 @@ export async function buildSkillTools(db: SupabaseClient, userId: string, modeId
       execute: async ({ id }) => {
         const want = id.replace(/^\//, "").trim().toLowerCase();
         const s = list.find((x) => x.id === want);
+        if (s) { try { await db.from("usage_events").insert({ user_id: userId, bucket: "skill:" + s.id }); } catch { /* stats only */ } }
         return s ? { ok: true, skill: s.name, instructions: s.instructions } : { ok: false, error: "No skill with that id. Answer normally." };
       },
     }),

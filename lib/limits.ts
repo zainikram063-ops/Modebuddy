@@ -28,7 +28,7 @@ async function peek(db: SupabaseClient, userId: string, bucket: Bucket): Promise
 export async function spendLimit(db: SupabaseClient, userId: string, bucket: Bucket): Promise<Spend> {
   const now = await peek(db, userId, bucket);
   if (!now) return { ok: true, left: LIMITS[bucket].max, max: LIMITS[bucket].max, resetAt: null };
-  if (!now.ok) return now;
+  if (!now.ok) { await db.from("usage_events").insert({ user_id: userId, bucket: bucket + "-blocked" }); return now; }
   await db.from("usage_events").insert({ user_id: userId, bucket });
   return { ...now, left: now.left - 1 };
 }
@@ -63,7 +63,11 @@ export async function liveLimit(): Promise<Spend> {
   const open: Spend = { ok: true, left: LIMITS.buddy.max, max: LIMITS.buddy.max, resetAt: null };
   try {
     const { sb, user } = await userDb();
-    return user ? await spendLimit(sb as unknown as SupabaseClient, user.id, "buddy") : open;
+    if (!user) return open;
+    const db = sb as unknown as SupabaseClient;
+    const res = await spendLimit(db, user.id, "buddy");
+    if (res.ok) await db.from("usage_events").insert({ user_id: user.id, bucket: "live" });
+    return res;
   } catch {
     return open;
   }
