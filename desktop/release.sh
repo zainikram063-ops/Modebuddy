@@ -11,6 +11,7 @@ swiftc -O native/mbspeech.swift -target arm64-apple-macos12 -o native/mbspeech-a
 lipo -create native/mbspeech-x64 native/mbspeech-arm64 -output native/mbspeech
 rm -f native/mbspeech-x64 native/mbspeech-arm64
 
+SETFILE=$(command -v SetFile || xcrun -f SetFile 2>/dev/null || true)
 rm -rf release && mkdir -p release
 for ARCH in x64 arm64; do
   NAME=$([ "$ARCH" = arm64 ] && echo AppleSilicon || echo Intel)
@@ -22,12 +23,18 @@ for ARCH in x64 arm64; do
   find "$APP/Contents/Resources" -type f \( -name "*.node" -o -name "mbspeech" \) -exec codesign --force --sign - {} \;
   codesign --force --deep --sign - "$APP"
   codesign --verify --deep --strict "$APP" && echo "Signature OK"
-  # Make the DMG: the app plus a shortcut to Applications to drag it into
+  # The DMG: the app, a shortcut to Applications, and the ModeBuddy icon on the disk
   STAGE=$(mktemp -d)
   cp -R "$APP" "$STAGE/"
   ln -s /Applications "$STAGE/Applications"
-  hdiutil create -volname "ModeBuddy" -srcfolder "$STAGE" -ov -format UDZO "release/ModeBuddy-$NAME.dmg" >/dev/null
-  rm -rf "$STAGE"
+  [ -f build/icon.icns ] && cp build/icon.icns "$STAGE/.VolumeIcon.icns"
+  TMP=$(mktemp -d)
+  hdiutil create -volname "ModeBuddy" -srcfolder "$STAGE" -ov -format UDRW "$TMP/rw.dmg" >/dev/null
+  VOL=$(hdiutil attach -readwrite -noverify -noautoopen "$TMP/rw.dmg" | awk -F'\t' '/\/Volumes\//{print $NF}')
+  if [ -n "$SETFILE" ] && [ -n "$VOL" ]; then "$SETFILE" -a C "$VOL"; fi
+  if [ -n "$VOL" ]; then hdiutil detach "$VOL" -quiet || hdiutil detach "$VOL" -force -quiet; fi
+  hdiutil convert "$TMP/rw.dmg" -format UDZO -ov -o "release/ModeBuddy-$NAME.dmg" >/dev/null
+  rm -rf "$STAGE" "$TMP"
 done
 echo "DONE. Your files:"
 ls -lh release
