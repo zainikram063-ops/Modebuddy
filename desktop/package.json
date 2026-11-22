@@ -1,7 +1,7 @@
 {
   "name": "modebuddy-desktop",
   "productName": "ModeBuddy",
-  "version": "0.4.2",
+  "version": "1.0.0",
   "description": "ModeBuddy for Mac",
   "private": true,
   "main": "main.js",
