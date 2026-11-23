@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Flame, Hourglass, Layers, Target, Trophy } from "lucide-react";
+import { ArrowRight, Flame } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   countByDay, dayKey, heatLevel, heatmap, streak, weakSpots,
@@ -83,15 +83,6 @@ export default function StudyHome({ refreshKey, onReview, onPractice }: Props) {
 
   return (
     <section className="study-home">
-      <div className="sh-stats">
-        <div className={`sh-stat streak ${s.today ? "lit" : ""}`} title={s.today ? "Studied today" : "Study today to keep it going"}>
-          <Flame {...ic} /><b>{s.streak}</b><span>day streak</span>
-        </div>
-        <div className="sh-stat"><Layers {...ic} /><b>{s.due}</b><span>cards due</span></div>
-        <div className="sh-stat"><Target {...ic} /><b>{s.acc7 === null ? "–" : `${s.acc7}%`}</b><span>accuracy · 7 days</span></div>
-        <div className="sh-stat"><Hourglass {...ic} /><b>{s.focus7}</b><span>focus min · 7 days</span></div>
-        <div className="sh-stat"><Trophy {...ic} /><b>{s.mastered}</b><span>of {s.cards} mastered</span></div>
-      </div>
 
       {s.plan && <TodayPlan plan={s.plan} />}
 
