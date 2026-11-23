@@ -19,7 +19,7 @@ import { ARTIFACT_NOTE } from "@/lib/artifact-note";
 import { chatGuard } from "@/lib/guard";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 type Body = {
   id: string;

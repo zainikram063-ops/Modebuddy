@@ -108,7 +108,13 @@ function createWindow() {
   wc.on("will-redirect", guard);
   wc.on("did-fail-load", (_e, code, _d, _u, isMain) => { if (isMain && code !== -3) win.loadURL(OFFLINE); });
   win.once("ready-to-show", () => win.show());
-  win.on("close", (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
+  win.on("close", (e) => {
+    if (quitting) return;
+    e.preventDefault();
+    // In full screen, leave it first, or macOS leaves a black empty screen behind
+    if (win.isFullScreen()) { win.once("leave-full-screen", () => win.hide()); win.setFullScreen(false); }
+    else win.hide();
+  });
   win.loadURL(pending || SITE);
   pending = null;
 }

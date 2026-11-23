@@ -73,7 +73,7 @@ async function watchYouTube(url: string, from?: number, to?: number, focus?: str
   for (const model of ["gemini-flash-latest", "gemini-flash-lite-latest"]) {
     try {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body, signal: AbortSignal.timeout(110_000),
+        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body, signal: AbortSignal.timeout(150_000),
       });
       const j = await r.json().catch(() => ({}));
       const parts = (j?.candidates?.[0]?.content?.parts ?? []) as { text?: string }[];
@@ -83,6 +83,7 @@ async function watchYouTube(url: string, from?: number, to?: number, focus?: str
       if (![404, 429, 500, 503].includes(r.status)) break;
     } catch (e) {
       last = (e as Error).message;
+      if ((e as Error).name === "TimeoutError") break;
     }
   }
   return { ok: false, error: "Couldn't watch that video (" + last.slice(0, 160) + "). It may be private or age-restricted, too long for a free key (ask for a part, like minutes 0 to 20), or Google is busy." };
